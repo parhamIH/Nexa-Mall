@@ -1,0 +1,41 @@
+Nexa Mall
+│
+├── 1. Project Foundation        ✅
+│   ├── Django
+│   ├── DRF
+│   ├── django-redis
+│   ├── Project structure
+│   └── apps/
+│
+├── 2. Domain Modeling           ✅
+│   ├── Mall
+│   ├── Floor
+│   ├── Unit
+│   ├── Tenant
+│   ├── Shop
+│   ├── Product
+│   ├── Order
+│   ├── Payment
+│   └── ...
+│
+├── 3. Accounts & Identity       👈 الان اینجاییم
+│   ├── Custom User              ✅
+│   ├── UUID                     ✅
+│   ├── Email Authentication     ✅
+│   ├── UserManager              ✅
+│   ├── Roles                    ⏳
+│   ├── Permissions              ⏳
+│   └── Address                  ⏳
+│
+├── 4. Mall Management           ⏳
+├── 5. Tenant Management         ⏳
+├── 6. Catalog                   ⏳
+├── 7. Orders / Commerce         ⏳
+├── 8. Payments                  ⏳
+├── 9. Notifications             ⏳
+├── 10. Redis / Caching          ⏳
+├── 11. Celery                   ⏳
+├── 12. Search                   ⏳
+├── 13. Docker                   ⏳
+├── 14. Testing                  ⏳
+└── 15. System Design / Scaling  ⏳
