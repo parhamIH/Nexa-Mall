@@ -13,7 +13,7 @@ class ProductOption(models.Model):
     )
 
     product = models.ForeignKey(
-        Product,
+        "catalog.Product",
         on_delete=models.CASCADE,
         related_name="options",
     )

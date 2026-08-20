@@ -17,7 +17,7 @@ class ProductVariant(models.Model):
     )
 
     product = models.ForeignKey(
-        Product,
+        "catalog.Product",
         on_delete=models.CASCADE,
         related_name="variants",
     )
@@ -57,7 +57,7 @@ class ProductVariant(models.Model):
     )
 
     option_values = models.ManyToManyField(
-        ProductOptionValue,
+        "catalog.ProductOptionValue",
         through="ProductVariantOptionValue",
         related_name="variants",
     )
@@ -97,7 +97,7 @@ class ProductVariantOptionValue(models.Model):
     )
 
     option_value = models.ForeignKey(
-        ProductOptionValue,
+        "catalog.ProductOptionValue",
         on_delete=models.CASCADE,
         related_name="variant_links",
     )
