@@ -98,3 +98,77 @@ class TenantMembership(models.Model):
 
     def __str__(self):
         return f"{self.user.email} → {self.tenant.name}"
+
+class Shop(models.Model):
+    class Status(models.TextChoices):
+        DRAFT = "DRAFT", "Draft"
+        ACTIVE = "ACTIVE", "Active"
+        SUSPENDED = "SUSPENDED", "Suspended"
+        CLOSED = "CLOSED", "Closed"
+
+    id = models.UUIDField(
+        primary_key=True,
+        default=uuid.uuid4,
+        editable=False,
+    )
+
+    tenant = models.OneToOneField(
+        "tenants.Tenant",
+        on_delete=models.PROTECT,
+        related_name="shop",
+    )
+
+    name = models.CharField(
+        max_length=150,
+    )
+
+    slug = models.SlugField(
+        max_length=180,
+        unique=True,
+    )
+
+    description = models.TextField(
+        blank=True,
+    )
+
+    logo = models.ImageField(
+        upload_to="shops/logos/",
+        blank=True,
+        null=True,
+    )
+
+    banner = models.ImageField(
+        upload_to="shops/banners/",
+        blank=True,
+        null=True,
+    )
+
+    phone = models.CharField(
+        max_length=20,
+        blank=True,
+    )
+
+    email = models.EmailField(
+        blank=True,
+    )
+
+    website = models.URLField(
+        blank=True,
+    )
+
+    status = models.CharField(
+        max_length=20,
+        choices=Status.choices,
+        default=Status.DRAFT,
+    )
+
+    created_at = models.DateTimeField(
+        auto_now_add=True,
+    )
+
+    updated_at = models.DateTimeField(
+        auto_now=True,
+    )
+
+    def __str__(self):
+        return self.name
