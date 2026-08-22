@@ -1,5 +1,6 @@
 from django.db import models
 
+from ..managers import ProductVariantManager
 import uuid
 from django.core.validators import MinValueValidator
 
@@ -101,6 +102,9 @@ class ProductVariantOptionValue(models.Model):
         on_delete=models.CASCADE,
         related_name="variant_links",
     )
+
+    objects = ProductVariantManager()
+
 
     class Meta:
         constraints = [

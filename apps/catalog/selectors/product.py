@@ -1,51 +1,9 @@
-from django.db.models import Prefetch, QuerySet
+from django.db.models import QuerySet
 
-from catalog.models import (
-    Product,
-    ProductImage,
-    ProductOption,
-    ProductOptionValue,
-    ProductVariant,
-)
+from apps.catalog.models  import Product
 
 
 class ProductSelector:
-
-    @staticmethod
-    def base_queryset() -> QuerySet:
-        return (
-            Product.objects
-            .select_related("shop", "brand")
-            .prefetch_related(
-                "categories",
-                "images",
-                Prefetch(
-                    "options",
-                    queryset=(
-                        ProductOption.objects
-                        .order_by("position")
-                        .prefetch_related(
-                            Prefetch(
-                                "values",
-                                queryset=ProductOptionValue.objects.order_by(
-                                    "position"
-                                ),
-                            )
-                        )
-                    ),
-                ),
-                Prefetch(
-                    "variants",
-                    queryset=(
-                        ProductVariant.objects
-                        .filter(
-                            status=ProductVariant.Status.ACTIVE
-                        )
-                        .prefetch_related("option_values")
-                    ),
-                ),
-            )
-        )
 
     @staticmethod
     def get_by_id(
@@ -53,8 +11,8 @@ class ProductSelector:
         product_id,
     ) -> Product:
         return (
-            ProductSelector
-            .base_queryset()
+            Product.objects
+            .with_relations()
             .get(id=product_id)
         )
 
@@ -64,9 +22,9 @@ class ProductSelector:
         shop,
     ) -> QuerySet:
         return (
-            ProductSelector
-            .base_queryset()
-            .filter(shop=shop)
+            Product.objects
+            .for_shop(shop)
+            .with_relations()
         )
 
     @staticmethod
@@ -75,12 +33,10 @@ class ProductSelector:
         shop,
     ) -> QuerySet:
         return (
-            ProductSelector
-            .base_queryset()
-            .filter(
-                shop=shop,
-                status=Product.Status.ACTIVE,
-            )
+            Product.objects
+            .for_shop(shop)
+            .active()
+            .with_relations()
         )
 
     @staticmethod
@@ -90,10 +46,8 @@ class ProductSelector:
         product_id,
     ) -> Product:
         return (
-            ProductSelector
-            .base_queryset()
-            .get(
-                id=product_id,
-                shop=shop,
-            )
+            Product.objects
+            .for_shop(shop)
+            .with_relations()
+            .get(id=product_id)
         )

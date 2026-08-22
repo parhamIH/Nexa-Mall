@@ -1,6 +1,6 @@
 from django.db import transaction
 
-from catalog.models import Product, ProductVariant
+from apps.catalog.models  import Product, ProductVariant
 
 
 class ProductService:

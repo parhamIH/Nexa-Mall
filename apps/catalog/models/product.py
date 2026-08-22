@@ -1,5 +1,6 @@
 from django.db import models
 import uuid
+from ..managers import ProductManager
 
 class Product(models.Model):
 
@@ -59,6 +60,8 @@ class Product(models.Model):
     updated_at = models.DateTimeField(
         auto_now=True,
     )
+
+    objects = ProductManager()
 
     class Meta:
         constraints = [

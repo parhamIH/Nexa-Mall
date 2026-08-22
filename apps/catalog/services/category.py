@@ -1,6 +1,6 @@
 from django.db import transaction
 
-from catalog.models import Category
+from apps.catalog.models  import Category
 
 
 class CategoryService:

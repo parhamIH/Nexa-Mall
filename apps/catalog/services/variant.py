@@ -1,6 +1,6 @@
 from django.db import transaction
 
-from catalog.models import (
+from apps.catalog.models  import (
     ProductOptionValue,
     ProductVariant,
 )
