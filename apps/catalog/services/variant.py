@@ -5,7 +5,6 @@ from apps.catalog.models  import (
     ProductVariant,
 )
 
-
 class VariantService:
 
     @staticmethod
