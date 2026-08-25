@@ -8,6 +8,8 @@ class StockMovement(models.Model):
 
     class Type(models.TextChoices):
         RECEIPT = "RECEIPT", "Receipt"
+        RESERVE = "RESERVE", "Reserve"
+        RELEASE = "RELEASE", "Release"
         SALE = "SALE", "Sale"
         RETURN = "RETURN", "Return"
         DAMAGE = "DAMAGE", "Damage"
