@@ -103,7 +103,7 @@ class ProductVariantOptionValue(models.Model):
         related_name="variant_links",
     )
 
-    objects = ProductVariantManager()
+    
 
 
     class Meta:

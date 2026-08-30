@@ -1,0 +1,55 @@
+از اینجا به بعد یک قانون معماری ثابت داشته باشیم:
+
+Serializer
+
+مسئول:
+
+Request validation
+Input normalization
+Output representation
+View / ViewSet
+
+مسئول:
+
+HTTP
+Authentication
+Permission
+Calling Service / Selector
+Response
+Service
+
+مسئول:
+
+Business operation
+Transaction
+Domain rules
+Selector
+
+مسئول:
+
+Read queries
+select_related
+prefetch_related
+Filtering by scope
+Model
+
+مسئول:
+
+State
+Relationship
+Database constraints
+
+یعنی نمی‌خواهیم این اتفاق بیفتد:
+
+# Serializer
+inventory.reserved += quantity
+inventory.save()
+
+یا:
+
+# View
+Order.objects.create(...)
+Reservation.objects.create(...)
+InventoryItem.objects.update(...)
+
+این‌ها باید بروند داخل Service.
