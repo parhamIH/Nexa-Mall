@@ -12,6 +12,7 @@ class ReservationService:
     @transaction.atomic
     def create_reservation(
         *,
+        order,
         variant,
         quantity,
         reference,
@@ -25,14 +26,20 @@ class ReservationService:
                 "Reservation expiration must be in the future."
             )
 
+        if order.shop_id != variant.product.shop_id:
+            raise ValidationError(
+        "Order and variant must belong to the same shop."
+            )
+
         reservation = Reservation.objects.create(
+            order=order,
             inventory=variant.inventory,
             quantity=quantity,
             reference=reference,
             expires_at=expires_at,
             status=Reservation.Status.ACTIVE,
         )
-
+        
         try:
             StockService.reserve_stock(
                 variant=variant,

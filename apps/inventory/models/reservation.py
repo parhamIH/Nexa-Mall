@@ -24,6 +24,13 @@ class Reservation(models.Model):
         related_name="reservations",
     )
 
+    order = models.ForeignKey(
+    "orders.Order",
+    on_delete=models.PROTECT,
+    related_name="reservations",    
+    )
+
+       
     quantity = models.PositiveIntegerField(
         validators=[MinValueValidator(1)],
     )
@@ -57,7 +64,10 @@ class Reservation(models.Model):
             models.Index(
                 fields=["inventory", "status"],
             ),
+            models.Index(
+                fields=["order", "status"],
+            ),
         ]
-
+        
     def __str__(self):
         return f"{self.reference} - {self.status}"

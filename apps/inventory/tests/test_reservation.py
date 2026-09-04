@@ -1,20 +1,39 @@
 from datetime import timedelta
+from decimal import Decimal
 
+from django.contrib.auth import get_user_model
 from django.core.exceptions import ValidationError
 from django.test import TestCase
 from django.utils import timezone
 
 from apps.catalog.models import Product, ProductVariant
-from apps.inventory.models import InventoryItem, Reservation, StockMovement
+from apps.inventory.models import (
+    InventoryItem,
+    Reservation,
+    StockMovement,
+)
 from apps.inventory.services.reservation import ReservationService
 from apps.inventory.services.stock import StockService
+from apps.orders.models import Order
 from apps.tenants.models import Tenant, Shop
+
+
+User = get_user_model()
 
 
 class ReservationServiceTests(TestCase):
 
     @classmethod
     def setUpTestData(cls):
+        # -------------------------
+        # User
+        # -------------------------
+
+        cls.user = User.objects.create_user(
+            email="reservation@example.com",
+            password="test-password",
+        )
+
         # -------------------------
         # Tenant
         # -------------------------
@@ -53,7 +72,7 @@ class ReservationServiceTests(TestCase):
             product=cls.product,
             sku="TEST-SKU-001",
             name="Test Variant",
-            price=100,
+            price=Decimal("100000"),
             status=ProductVariant.Status.ACTIVE,
         )
 
@@ -67,6 +86,21 @@ class ReservationServiceTests(TestCase):
             reserved=0,
         )
 
+        # -------------------------
+        # Order
+        # -------------------------
+
+        cls.order = Order.objects.create(
+            shop=cls.shop,
+            user=cls.user,
+            status=Order.Status.PAYMENT_PENDING,
+            currency="IRR",
+            subtotal=Decimal("0"),
+            discount=Decimal("0"),
+            shipping_cost=Decimal("0"),
+            total=Decimal("0"),
+        )
+
     # =========================================================
     # CREATE
     # =========================================================
@@ -75,6 +109,7 @@ class ReservationServiceTests(TestCase):
         expires_at = timezone.now() + timedelta(minutes=15)
 
         reservation = ReservationService.create_reservation(
+            order=self.order,
             variant=self.variant,
             quantity=3,
             reference="RES-001",
@@ -84,6 +119,11 @@ class ReservationServiceTests(TestCase):
         self.assertEqual(
             reservation.status,
             Reservation.Status.ACTIVE,
+        )
+
+        self.assertEqual(
+            reservation.order,
+            self.order,
         )
 
         self.inventory.refresh_from_db()
@@ -117,6 +157,7 @@ class ReservationServiceTests(TestCase):
 
         with self.assertRaises(ValidationError):
             ReservationService.create_reservation(
+                order=self.order,
                 variant=self.variant,
                 quantity=11,
                 reference="RES-INSUFFICIENT",
@@ -146,6 +187,7 @@ class ReservationServiceTests(TestCase):
 
         with self.assertRaises(ValueError):
             ReservationService.create_reservation(
+                order=self.order,
                 variant=self.variant,
                 quantity=0,
                 reference="RES-INVALID",
@@ -157,6 +199,7 @@ class ReservationServiceTests(TestCase):
 
         with self.assertRaises(ValidationError):
             ReservationService.create_reservation(
+                order=self.order,
                 variant=self.variant,
                 quantity=3,
                 reference="RES-EXPIRED",
@@ -171,6 +214,7 @@ class ReservationServiceTests(TestCase):
         expires_at = timezone.now() + timedelta(minutes=15)
 
         reservation = ReservationService.create_reservation(
+            order=self.order,
             variant=self.variant,
             quantity=3,
             reference="RES-002",
@@ -215,6 +259,7 @@ class ReservationServiceTests(TestCase):
 
     def test_cannot_confirm_expired_reservation(self):
         reservation = Reservation.objects.create(
+            order=self.order,
             inventory=self.inventory,
             quantity=3,
             reference="RES-005",
@@ -255,6 +300,7 @@ class ReservationServiceTests(TestCase):
 
     def test_cannot_confirm_released_reservation(self):
         reservation = Reservation.objects.create(
+            order=self.order,
             inventory=self.inventory,
             quantity=3,
             reference="RES-006",
@@ -275,6 +321,7 @@ class ReservationServiceTests(TestCase):
         expires_at = timezone.now() + timedelta(minutes=15)
 
         reservation = ReservationService.create_reservation(
+            order=self.order,
             variant=self.variant,
             quantity=3,
             reference="RES-003",
@@ -319,6 +366,7 @@ class ReservationServiceTests(TestCase):
 
     def test_cannot_release_released_reservation(self):
         reservation = Reservation.objects.create(
+            order=self.order,
             inventory=self.inventory,
             quantity=3,
             reference="RES-007",
@@ -339,6 +387,7 @@ class ReservationServiceTests(TestCase):
         expires_at = timezone.now() - timedelta(minutes=1)
 
         reservation = Reservation.objects.create(
+            order=self.order,
             inventory=self.inventory,
             quantity=3,
             reference="RES-004",
@@ -381,6 +430,7 @@ class ReservationServiceTests(TestCase):
 
     def test_cannot_expire_active_reservation(self):
         reservation = Reservation.objects.create(
+            order=self.order,
             inventory=self.inventory,
             quantity=3,
             reference="RES-008",

@@ -124,4 +124,26 @@ class OrderService:
             ]
         )
 
+    
+    @staticmethod
+    @transaction.atomic
+    def confirm_order(
+        *,
+        order,
+    ):
+        if order.status != Order.Status.PAYMENT_PENDING:
+            raise ValidationError(
+                "Only payment-pending orders can be confirmed."
+            )
+
+        order.status = Order.Status.CONFIRMED
+
+        order.save(
+            update_fields=[
+                "status",
+                "updated_at",
+            ]
+        )
+
+        return order
         return order

@@ -108,6 +108,7 @@ class CheckoutService:
             key=lambda item: str(item.variant_id),
         ):
             ReservationService.create_reservation(
+                order=order,
                 variant=order_item.variant,
                 quantity=order_item.quantity,
                 reference=(
