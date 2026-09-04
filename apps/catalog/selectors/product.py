@@ -51,3 +51,42 @@ class ProductSelector:
             .with_relations()
             .get(id=product_id)
         )
+    
+    @staticmethod
+    def public_products() -> QuerySet:
+        return (
+            Product.objects
+            .filter(
+                status=Product.Status.ACTIVE,
+            )
+            .select_related(
+                "shop",
+                "brand",
+            )
+            .prefetch_related(
+                "categories",
+                "images",
+            )
+        )
+
+    @staticmethod
+    def products_for_user(
+        *,
+        user,
+    ) -> QuerySet:
+        return (
+            Product.objects
+            .filter(
+                shop__tenant__memberships__user=user,
+                shop__tenant__memberships__is_active=True,
+            )
+            .select_related(
+                "shop",
+                "brand",
+            )
+            .prefetch_related(
+                "categories",
+                "images",
+            )
+            .distinct()
+        )
