@@ -30,4 +30,11 @@ urlpatterns = [
             "apps.catalog.api.urls",
         ),
     ),
+
+    path(
+        "api/v1/cart/",
+        include(
+            "apps.cart.api.urls",
+        ),
+    ),
 ]

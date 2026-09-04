@@ -56,7 +56,7 @@ class CartSelectorTests(TestCase):
 
         result = CartSelector.get_active_cart(
             user=self.user,
-            shop=self.shop,
+            shop_id=self.shop.id,
         )
 
         self.assertEqual(

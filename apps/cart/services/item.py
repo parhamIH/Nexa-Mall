@@ -1,10 +1,21 @@
+from django.core.exceptions import PermissionDenied, ValidationError
 from django.db import transaction
-from django.core.exceptions import ValidationError
 
-from apps.cart.models import CartItem
+from apps.cart.models import Cart, CartItem
 
 
 class CartItemService:
+
+    @staticmethod
+    def _require_cart_ownership(
+        *,
+        item,
+        user,
+    ):
+        if item.cart.user_id != user.id:
+            raise PermissionDenied(
+                "You do not own this cart."
+            )
 
     @staticmethod
     @transaction.atomic
@@ -14,7 +25,7 @@ class CartItemService:
         variant,
         quantity,
     ):
-        if cart.status != cart.Status.ACTIVE:
+        if cart.status != Cart.Status.ACTIVE:
             raise ValidationError(
                 "Cannot modify an inactive cart."
             )
@@ -59,13 +70,19 @@ class CartItemService:
         *,
         item,
         quantity,
+        user,
     ):
+        CartItemService._require_cart_ownership(
+            item=item,
+            user=user,
+        )
+
         if quantity <= 0:
             raise ValueError(
                 "Quantity must be greater than zero."
             )
 
-        if item.cart.status != item.cart.Status.ACTIVE:
+        if item.cart.status != Cart.Status.ACTIVE:
             raise ValidationError(
                 "Cannot modify an inactive cart."
             )
@@ -86,8 +103,14 @@ class CartItemService:
     def remove_item(
         *,
         item,
+        user,
     ):
-        if item.cart.status != item.cart.Status.ACTIVE:
+        CartItemService._require_cart_ownership(
+            item=item,
+            user=user,
+        )
+
+        if item.cart.status != Cart.Status.ACTIVE:
             raise ValidationError(
                 "Cannot modify an inactive cart."
             )
