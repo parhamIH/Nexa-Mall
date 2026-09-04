@@ -210,6 +210,66 @@ class PaymentService:
 
         return attempt
 
+    
+    @staticmethod
+    @transaction.atomic
+    def initiate_attempt(
+        *,
+        payment,
+        provider,
+        idempotency_key,
+        gateway,
+    ):
+        if gateway.name != provider:
+            raise ValidationError(
+                "Gateway provider does not match payment provider."
+            )
+
+        attempt = PaymentService.create_attempt(
+            payment=payment,
+            provider=provider,
+            idempotency_key=idempotency_key,
+        )
+
+        if attempt.provider_reference:
+            return attempt
+
+        if attempt.status not in (
+            PaymentAttempt.Status.INITIATED,
+            PaymentAttempt.Status.REDIRECT_REQUIRED,
+        ):
+            raise ValidationError(
+                "Payment attempt cannot be initiated."
+            )
+
+        result = gateway.initiate_payment(
+            payment=payment,
+            attempt=attempt,
+        )
+
+        attempt.provider_reference = result.provider_reference
+
+        if result.redirect_url:
+            attempt.status = PaymentAttempt.Status.REDIRECT_REQUIRED
+        else:
+            attempt.status = PaymentAttempt.Status.PROCESSING
+
+        attempt.provider_response = {
+            "redirect_url": result.redirect_url,
+        }
+
+        attempt.save(
+            update_fields=[
+                "provider_reference",
+                "status",
+                "provider_response",
+                "updated_at",
+            ]
+        )
+
+        return attempt
+
+    
     @staticmethod
     @transaction.atomic
     def mark_success(

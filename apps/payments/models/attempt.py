@@ -86,6 +86,11 @@ class PaymentAttempt(models.Model):
                 fields=["payment", "attempt_number"],
                 name="unique_payment_attempt_number",
             ),
+            models.UniqueConstraint(
+                fields=["provider", "provider_reference"],
+                condition=~models.Q(provider_reference=""),
+                name="unique_provider_attempt_reference",
+            ),
         ]
 
         indexes = [
