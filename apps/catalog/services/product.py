@@ -2,27 +2,29 @@ from django.db import transaction
 
 from apps.catalog.models  import Product, ProductVariant
 
-
 class ProductService:
 
     @staticmethod
     @transaction.atomic
     def create_product(
         *,
-        shop,
-        name,
-        slug,
-        description="",
-        brand=None,
+        shop_id,
+        validated_data,
+        user,
     ):
-        return Product.objects.create(
-            shop=shop,
-            name=name,
-            slug=slug,
-            description=description,
-            brand=brand,
-            status=Product.Status.DRAFT,
+        categories = validated_data.pop(
+            "categories",
+            [],
         )
+
+        product = Product.objects.create(
+            shop_id=shop_id,
+            **validated_data,
+        )
+
+        product.categories.set(categories)
+
+        return product
 
     @staticmethod
     @transaction.atomic
@@ -59,3 +61,41 @@ class ProductService:
         )
 
         return product
+
+
+    @staticmethod
+    @transaction.atomic
+    def update_product(
+        *,
+        product,
+        validated_data,
+        user,
+    ):
+        categories = validated_data.pop(
+            "categories",
+            None,
+        )
+
+        for field, value in validated_data.items():
+            setattr(product, field, value)
+
+        product.save()
+
+        if categories is not None:
+            product.categories.set(categories)
+
+        return product
+
+    @staticmethod
+    @transaction.atomic
+    def delete_product(
+        *,
+        product,
+        user,
+    ):
+        if product.status != Product.Status.ARCHIVED:
+            raise ValueError(
+                "Only archived products can be deleted."
+            )
+
+        product.delete()

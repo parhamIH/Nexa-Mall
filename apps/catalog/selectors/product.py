@@ -67,6 +67,10 @@ class ProductSelector:
                 "categories",
                 "images",
             )
+            .order_by(
+                "-created_at",
+                "id",
+            )
         )
 
     @staticmethod
@@ -87,6 +91,38 @@ class ProductSelector:
             .prefetch_related(
                 "categories",
                 "images",
+            )
+            .order_by(
+                "-created_at",
+                "id",
+            )
+            .distinct()
+        )
+
+    @staticmethod
+    def management_products(
+        *,
+        user,
+        shop_id,
+    ):
+        return (
+            Product.objects
+            .filter(
+                shop_id=shop_id,
+                shop__tenant__memberships__user=user,
+                shop__tenant__memberships__is_active=True,
+            )
+            .select_related(
+                "shop",
+                "brand",
+            )
+            .prefetch_related(
+                "categories",
+                "images",
+            )
+            .order_by(
+                "-created_at",
+                "id",
             )
             .distinct()
         )

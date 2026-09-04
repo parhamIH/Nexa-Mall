@@ -29,3 +29,33 @@ class ProductListSerializer(serializers.ModelSerializer):
             "updated_at",
         ]
         read_only_fields = fields
+
+
+
+class ProductManagementSerializer(serializers.ModelSerializer):
+
+    class Meta:
+        model = Product
+        fields = [
+            "id",
+            "name",
+            "slug",
+            "description",
+            "brand",
+            "categories",
+            "status",
+            "created_at",
+            "updated_at",
+        ]
+
+        read_only_fields = [
+            "id",
+            "created_at",
+            "updated_at",
+        ]
+
+    def validate_status(self, value):
+        if value == Product.Status.ARCHIVED:
+            return value
+
+        return value

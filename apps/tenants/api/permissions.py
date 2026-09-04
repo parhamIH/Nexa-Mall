@@ -5,9 +5,6 @@ from apps.tenants.services.access import TenantAccessService
 
 
 class IsActiveShopMember(BasePermission):
-    """
-    User must be an active member of the object's shop tenant.
-    """
 
     def has_object_permission(
         self,
@@ -27,10 +24,6 @@ class IsActiveShopMember(BasePermission):
 
 
 class IsShopManager(BasePermission):
-    """
-    Active OWNER or MANAGER can modify shop-owned resources.
-    All active members can read them.
-    """
 
     WRITE_ROLES = {
         TenantMembership.Role.OWNER,
@@ -58,4 +51,39 @@ class IsShopManager(BasePermission):
             user=request.user,
             tenant=shop.tenant,
             roles=self.WRITE_ROLES,
+        )
+
+
+
+
+class CanManageShopCatalog(BasePermission):
+    """
+    Only active OWNER or MANAGER of the shop's tenant
+    can manage catalog resources.
+    """
+
+    allowed_roles = {
+        TenantMembership.Role.OWNER,
+        TenantMembership.Role.MANAGER,
+    }
+
+    def has_permission(self, request, view):
+        shop_id = view.kwargs.get("shop_id")
+
+        if not shop_id:
+            return False
+
+        try:
+            from apps.tenants.models import Shop
+
+            shop = Shop.objects.select_related("tenant").get(
+                id=shop_id,
+            )
+        except Shop.DoesNotExist:
+            return False
+
+        return TenantAccessService.has_role(
+            user=request.user,
+            tenant=shop.tenant,
+            roles=self.allowed_roles,
         )

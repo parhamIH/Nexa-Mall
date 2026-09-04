@@ -1,5 +1,11 @@
-from .product import ProductViewSet
+from .me import MeView
+from .product import (
+    ProductManagementViewSet,
+    ProductPublicViewSet,
+)
 
 __all__ = [
-    "ProductViewSet",
+    "MeView",
+    "ProductPublicViewSet",
+    "ProductManagementViewSet",
 ]

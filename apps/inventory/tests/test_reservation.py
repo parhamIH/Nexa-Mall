@@ -7,11 +7,7 @@ from django.test import TestCase
 from django.utils import timezone
 
 from apps.catalog.models import Product, ProductVariant
-from apps.inventory.models import (
-    InventoryItem,
-    Reservation,
-    StockMovement,
-)
+from apps.inventory.models import InventoryItem, Reservation, StockMovement
 from apps.inventory.services.reservation import ReservationService
 from apps.inventory.services.stock import StockService
 from apps.orders.models import Order
@@ -19,8 +15,6 @@ from apps.tenants.models import Tenant, Shop
 
 
 User = get_user_model()
-
-
 class ReservationServiceTests(TestCase):
 
     @classmethod
@@ -100,7 +94,6 @@ class ReservationServiceTests(TestCase):
             shipping_cost=Decimal("0"),
             total=Decimal("0"),
         )
-
     # =========================================================
     # CREATE
     # =========================================================

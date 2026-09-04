@@ -1,17 +1,30 @@
-from django.urls import path
+from django.urls import include, path
 from rest_framework.routers import DefaultRouter
 
-from apps.catalog.api.views import ProductViewSet
-from apps.catalog.api.views.me import MeView
+from apps.catalog.api.views import (
+    MeView,
+    ProductManagementViewSet,
+    ProductPublicViewSet,
+)
 
 
-router = DefaultRouter()
+public_router = DefaultRouter()
 
-router.register(
+public_router.register(
     "products",
-    ProductViewSet,
+    ProductPublicViewSet,
     basename="product",
 )
+
+
+management_router = DefaultRouter()
+
+management_router.register(
+    "products",
+    ProductManagementViewSet,
+    basename="management-product",
+)
+
 
 urlpatterns = [
     path(
@@ -19,6 +32,14 @@ urlpatterns = [
         MeView.as_view(),
         name="me",
     ),
-]
 
-urlpatterns += router.urls
+    path(
+        "",
+        include(public_router.urls),
+    ),
+
+    path(
+        "manage/shops/<uuid:shop_id>/",
+        include(management_router.urls),
+    ),
+]

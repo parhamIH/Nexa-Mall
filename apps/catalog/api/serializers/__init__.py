@@ -1,5 +1,9 @@
-from .product import ProductListSerializer
+from .product import (
+    ProductListSerializer,
+    ProductManagementSerializer,
+)
 
 __all__ = [
     "ProductListSerializer",
+    "ProductManagementSerializer",
 ]
