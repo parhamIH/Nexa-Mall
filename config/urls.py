@@ -44,4 +44,11 @@ urlpatterns = [
             "apps.checkout.api.urls",
         ),
     ),
+
+    path(
+        "api/v1/orders/",
+        include(
+            "apps.orders.api.urls",
+        ),
+    ),
 ]

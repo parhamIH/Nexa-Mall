@@ -87,3 +87,39 @@ class CanManageShopCatalog(BasePermission):
             tenant=shop.tenant,
             roles=self.allowed_roles,
         )
+
+
+class CanManageShopOrders(BasePermission):
+    """
+    Only active OWNER or MANAGER of the shop's tenant
+    can view shop orders.
+    """
+
+    allowed_roles = {
+        TenantMembership.Role.OWNER,
+        TenantMembership.Role.MANAGER,
+    }
+
+    def has_permission(self, request, view):
+        shop_id = view.kwargs.get("shop_id")
+
+        if not shop_id:
+            return False
+
+        from apps.tenants.models import Shop
+
+        shop = (
+            Shop.objects
+            .select_related("tenant")
+            .filter(id=shop_id)
+            .first()
+        )
+
+        if shop is None:
+            return False
+
+        return TenantAccessService.has_role(
+            user=request.user,
+            tenant=shop.tenant,
+            roles=self.allowed_roles,
+        )
