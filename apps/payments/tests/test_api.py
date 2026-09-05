@@ -1,6 +1,7 @@
 from decimal import Decimal
 
 from django.contrib.auth import get_user_model
+from django.core.cache import cache
 from django.test import TestCase
 from rest_framework.test import APIClient
 
@@ -525,4 +526,70 @@ class PaymentAPITests(TestCase):
         self.assertEqual(
             response.status_code,
             400,
+        )
+
+    @staticmethod
+    def _throttle_payment_requests():
+        from apps.api.throttling import PaymentRateThrottle
+
+        PaymentRateThrottle.rate = "2/min"
+
+    def test_payment_endpoint_is_throttled(self):
+        cache.clear()
+
+        self._throttle_payment_requests()
+
+        from apps.api.throttling import PaymentRateThrottle
+
+        self.addCleanup(
+            setattr,
+            PaymentRateThrottle,
+            "rate",
+            None,
+        )
+        self.addCleanup(cache.clear)
+
+        self.client.force_authenticate(
+            user=self.user,
+        )
+
+        order = self.create_order()
+
+        first = self.client.post(
+            "/api/v1/payments/",
+            {
+                "order_id": str(order.id),
+            },
+            format="json",
+        )
+
+        second = self.client.post(
+            "/api/v1/payments/",
+            {
+                "order_id": str(order.id),
+            },
+            format="json",
+        )
+
+        third = self.client.post(
+            "/api/v1/payments/",
+            {
+                "order_id": str(order.id),
+            },
+            format="json",
+        )
+
+        self.assertEqual(
+            first.status_code,
+            201,
+        )
+
+        self.assertEqual(
+            second.status_code,
+            201,
+        )
+
+        self.assertEqual(
+            third.status_code,
+            429,
         )

@@ -6,6 +6,7 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from apps.api.throttling import PaymentRateThrottle
 from apps.orders.models import Order
 from apps.payments.api.serializers import (
     PaymentAttemptCreateSerializer,
@@ -22,6 +23,10 @@ class PaymentCreateView(APIView):
 
     permission_classes = [
         IsAuthenticated,
+    ]
+
+    throttle_classes = [
+        PaymentRateThrottle,
     ]
 
     def post(self, request):
@@ -101,6 +106,10 @@ class PaymentAttemptCreateView(APIView):
 
     permission_classes = [
         IsAuthenticated,
+    ]
+
+    throttle_classes = [
+        PaymentRateThrottle,
     ]
 
     def post(self, request, payment_id):

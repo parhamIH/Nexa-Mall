@@ -96,12 +96,16 @@ DATABASES = {
     }
 }
 
-#Cache Redis 
+#Cache
+# LocMemCache for now (single-process dev/test baseline).
+# DRF throttles use the Django cache, so the cache backend must be
+# reachable without an external server. Redis (django_redis) will be
+# introduced in the performance phase.
 
 CACHES = {
     "default": {
-        "BACKEND": "django_redis.cache.RedisCache",
-        "LOCATION": "redis://127.0.0.1:6379/1",
+        "BACKEND": "django.core.cache.backends.locmem.LocMemCache",
+        "LOCATION": "nexa-mall-dev",
     }
 }
 
@@ -144,6 +148,21 @@ REST_FRAMEWORK = {
     "EXCEPTION_HANDLER": (
         "apps.api.exceptions.custom_exception_handler"
     ),
+
+    "DEFAULT_THROTTLE_CLASSES": [
+        "rest_framework.throttling.AnonRateThrottle",
+        "rest_framework.throttling.UserRateThrottle",
+        "rest_framework.throttling.ScopedRateThrottle",
+    ],
+
+    "DEFAULT_THROTTLE_RATES": {
+        "anon": "60/min",
+        "user": "120/min",
+
+        "auth": "5/min",
+        "payment": "10/min",
+        "webhook": "30/min",
+    },
 }
 
 # Internationalization
