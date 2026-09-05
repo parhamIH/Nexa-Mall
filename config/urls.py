@@ -37,4 +37,11 @@ urlpatterns = [
             "apps.cart.api.urls",
         ),
     ),
+
+    path(
+        "api/v1/checkout/",
+        include(
+            "apps.checkout.api.urls",
+        ),
+    ),
 ]
