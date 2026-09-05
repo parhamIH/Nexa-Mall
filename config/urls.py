@@ -51,4 +51,11 @@ urlpatterns = [
             "apps.orders.api.urls",
         ),
     ),
+
+    path(
+        "api/v1/payments/",
+        include(
+            "apps.payments.api.urls",
+        ),
+    ),
 ]
