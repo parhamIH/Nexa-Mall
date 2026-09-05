@@ -111,14 +111,6 @@ class CartItemDetailView(APIView):
     ]
 
     def patch(self, request, item_id):
-        serializer = SetCartItemQuantitySerializer(
-            data=request.data,
-        )
-
-        serializer.is_valid(
-            raise_exception=True,
-        )
-
         item = CartSelector.get_item_for_user(
             user=request.user,
             item_id=item_id,
@@ -131,6 +123,14 @@ class CartItemDetailView(APIView):
                 },
                 status=status.HTTP_404_NOT_FOUND,
             )
+
+        serializer = SetCartItemQuantitySerializer(
+            data=request.data,
+        )
+
+        serializer.is_valid(
+            raise_exception=True,
+        )
 
         try:
             item = CartItemService.set_quantity(

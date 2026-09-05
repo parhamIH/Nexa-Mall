@@ -386,3 +386,28 @@ class CartAPITests(TestCase):
             response.status_code,
             404,
         )
+
+    def test_invalid_quantity_is_rejected(self):
+        self.client.force_authenticate(
+            user=self.user,
+        )
+
+        response = self.client.post(
+            self.items_url(),
+            {
+                "variant_id": str(self.variant.id),
+                "quantity": 0,
+            },
+            format="json",
+        )
+
+        self.assertEqual(
+            response.status_code,
+            400,
+        )
+
+        self.assertFalse(
+            CartItem.objects.filter(
+                cart__user=self.user,
+            ).exists()
+        )
