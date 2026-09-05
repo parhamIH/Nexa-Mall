@@ -18,5 +18,6 @@ class MeView(APIView):
             {
                 "id": str(request.user.id),
                 "email": request.user.email,
+                "version": request.version,
             }
         )
