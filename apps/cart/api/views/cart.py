@@ -1,4 +1,8 @@
 from django.core.exceptions import ValidationError
+from drf_spectacular.utils import (
+    OpenApiResponse,
+    extend_schema,
+)
 from rest_framework import status
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
@@ -20,6 +24,14 @@ class CartView(APIView):
         IsAuthenticated,
     ]
 
+    @extend_schema(
+        responses={
+            200: CartSerializer,
+            404: OpenApiResponse(
+                description="Active cart does not exist.",
+            ),
+        },
+    )
     def get(self, request, shop_id):
         cart = CartSelector.get_active_cart(
             user=request.user,
@@ -46,6 +58,12 @@ class CartItemCreateView(APIView):
         IsAuthenticated,
     ]
 
+    @extend_schema(
+        request=AddCartItemSerializer,
+        responses={
+            201: CartItemSerializer,
+        },
+    )
     def post(self, request, shop_id):
         serializer = AddCartItemSerializer(
             data=request.data,
@@ -110,6 +128,12 @@ class CartItemDetailView(APIView):
         IsAuthenticated,
     ]
 
+    @extend_schema(
+        request=SetCartItemQuantitySerializer,
+        responses={
+            200: CartItemSerializer,
+        },
+    )
     def patch(self, request, item_id):
         item = CartSelector.get_item_for_user(
             user=request.user,
@@ -151,6 +175,13 @@ class CartItemDetailView(APIView):
             status=status.HTTP_200_OK,
         )
 
+    @extend_schema(
+        responses={
+            204: OpenApiResponse(
+                description="Cart item removed.",
+            ),
+        },
+    )
     def delete(self, request, item_id):
         item = CartSelector.get_item_for_user(
             user=request.user,

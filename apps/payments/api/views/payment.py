@@ -1,5 +1,6 @@
 from django.core.exceptions import ValidationError as DjangoValidationError
 
+from drf_spectacular.utils import extend_schema
 from rest_framework import status
 from rest_framework.exceptions import ValidationError
 from rest_framework.permissions import IsAuthenticated
@@ -29,6 +30,12 @@ class PaymentCreateView(APIView):
         PaymentRateThrottle,
     ]
 
+    @extend_schema(
+        request=PaymentCreateSerializer,
+        responses={
+            201: PaymentSerializer,
+        },
+    )
     def post(self, request):
         serializer = PaymentCreateSerializer(
             data=request.data,
@@ -82,6 +89,11 @@ class PaymentDetailView(APIView):
         IsAuthenticated,
     ]
 
+    @extend_schema(
+        responses={
+            200: PaymentSerializer,
+        },
+    )
     def get(self, request, payment_id):
         payment = PaymentSelector.user_payment(
             user=request.user,
@@ -112,6 +124,12 @@ class PaymentAttemptCreateView(APIView):
         PaymentRateThrottle,
     ]
 
+    @extend_schema(
+        request=PaymentAttemptCreateSerializer,
+        responses={
+            201: PaymentAttemptSerializer,
+        },
+    )
     def post(self, request, payment_id):
         payment = PaymentSelector.user_payment(
             user=request.user,

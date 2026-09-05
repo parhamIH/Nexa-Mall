@@ -42,6 +42,7 @@ INSTALLED_APPS = [
     # Third-party
     "rest_framework",
     "django_filters",
+    "drf_spectacular",
 
     # Local apps
     "apps.accounts",
@@ -164,6 +165,10 @@ REST_FRAMEWORK = {
         "payment": "10/min",
         "webhook": "30/min",
     },
+
+    "DEFAULT_SCHEMA_CLASS": (
+        "drf_spectacular.openapi.AutoSchema"
+    ),
 }
 
 # Internationalization
@@ -182,3 +187,25 @@ USE_TZ = True
 # https://docs.djangoproject.com/en/6.0/howto/static-files/
 
 STATIC_URL = 'static/'
+
+
+# OpenAPI (drf-spectacular)
+
+SPECTACULAR_SETTINGS = {
+    "TITLE": "Nexa Mall API",
+    "DESCRIPTION": (
+        "Multi-tenant e-commerce API "
+        "for Nexa Mall."
+    ),
+    "VERSION": "1.0.0",
+
+    "SERVE_INCLUDE_SCHEMA": False,
+
+    "SCHEMA_PATH_PREFIX": r"/api/v[0-9]",
+
+    "SWAGGER_UI_SETTINGS": {
+        "deepLinking": True,
+        "persistAuthorization": True,
+        "displayOperationId": True,
+    },
+}

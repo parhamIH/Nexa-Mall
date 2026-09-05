@@ -1,5 +1,6 @@
 from django.core.exceptions import ValidationError as DjangoValidationError
 
+from drf_spectacular.utils import extend_schema
 from rest_framework import status
 from rest_framework.exceptions import ValidationError
 from rest_framework.permissions import IsAuthenticated
@@ -20,6 +21,12 @@ class CheckoutCreateView(APIView):
         IsAuthenticated,
     ]
 
+    @extend_schema(
+        request=CheckoutCreateSerializer,
+        responses={
+            201: CheckoutOrderSerializer,
+        },
+    )
     def post(self, request):
         serializer = CheckoutCreateSerializer(
             data=request.data,

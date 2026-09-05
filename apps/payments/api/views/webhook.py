@@ -1,5 +1,9 @@
 from django.core.exceptions import ValidationError as DjangoValidationError
 
+from drf_spectacular.utils import (
+    OpenApiResponse,
+    extend_schema,
+)
 from rest_framework import status
 from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
@@ -23,6 +27,14 @@ class PaymentWebhookView(APIView):
         WebhookRateThrottle,
     ]
 
+    @extend_schema(
+        request=WebhookSerializer,
+        responses={
+            200: OpenApiResponse(
+                description="Webhook processed successfully.",
+            ),
+        },
+    )
     def post(self, request, provider):
         serializer = WebhookSerializer(
             data=request.data,
