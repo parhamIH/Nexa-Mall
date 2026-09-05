@@ -99,3 +99,16 @@ class PaymentAttemptCreateSerializer(
     idempotency_key = serializers.CharField(
         max_length=100,
     )
+
+
+class WebhookSerializer(serializers.Serializer):
+
+    event_id = serializers.CharField(
+        max_length=255,
+    )
+
+    event_type = serializers.CharField(
+        max_length=100,
+    )
+
+    payload = serializers.JSONField()

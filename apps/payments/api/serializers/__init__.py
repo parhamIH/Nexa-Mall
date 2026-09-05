@@ -4,6 +4,7 @@ from .payment import (
     PaymentCreateSerializer,
     PaymentSerializer,
     PaymentTransactionSerializer,
+    WebhookSerializer,
 )
 
 __all__ = [
@@ -12,4 +13,5 @@ __all__ = [
     "PaymentTransactionSerializer",
     "PaymentCreateSerializer",
     "PaymentAttemptCreateSerializer",
+    "WebhookSerializer",
 ]

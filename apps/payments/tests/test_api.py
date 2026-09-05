@@ -12,6 +12,8 @@ from apps.orders.models import Order
 from apps.payments.models import (
     Payment,
     PaymentAttempt,
+    PaymentTransaction,
+    WebhookEvent,
 )
 from apps.tenants.models import Shop, Tenant
 
@@ -364,6 +366,158 @@ class PaymentAPITests(TestCase):
             {
                 "provider": "unknown-provider",
                 "idempotency_key": "UNKNOWN-001",
+            },
+            format="json",
+        )
+
+        self.assertEqual(
+            response.status_code,
+            400,
+        )
+
+    # =========================================================
+    # Webhooks
+    # =========================================================
+
+    def test_webhook_endpoint_does_not_require_authentication(self):
+        response = self.client.post(
+            "/api/v1/payments/webhooks/mock/",
+            {
+                "event_id": "API-EVENT-001",
+                "event_type": "payment.failed",
+                "payload": {},
+            },
+            format="json",
+        )
+
+        self.assertNotEqual(
+            response.status_code,
+            401,
+        )
+
+    def test_success_webhook(self):
+        order = self.create_order()
+
+        payment = Payment.objects.create(
+            order=order,
+            user=self.user,
+            amount=order.total,
+            currency=order.currency,
+        )
+
+        attempt = PaymentAttempt.objects.create(
+            payment=payment,
+            attempt_number=1,
+            provider="mock",
+            idempotency_key="API-WEBHOOK-001",
+            amount=payment.amount,
+            currency=payment.currency,
+            status=PaymentAttempt.Status.INITIATED,
+            provider_reference="MOCK-REF-001",
+        )
+
+        response = self.client.post(
+            "/api/v1/payments/webhooks/mock/",
+            {
+                "event_id": "API-EVENT-SUCCESS",
+                "event_type": "payment.succeeded",
+                "payload": {
+                    "provider_reference": "MOCK-REF-001",
+                    "status": "success",
+                    "transaction_id": "API-TX-001",
+                },
+            },
+            format="json",
+        )
+
+        self.assertEqual(
+            response.status_code,
+            200,
+        )
+
+        payment.refresh_from_db()
+
+        self.assertEqual(
+            payment.status,
+            Payment.Status.SUCCEEDED,
+        )
+
+    def test_duplicate_webhook_http_is_idempotent(self):
+        order = self.create_order()
+
+        payment = Payment.objects.create(
+            order=order,
+            user=self.user,
+            amount=order.total,
+            currency=order.currency,
+        )
+
+        PaymentAttempt.objects.create(
+            payment=payment,
+            attempt_number=1,
+            provider="mock",
+            idempotency_key="API-WEBHOOK-IDEMPOTENT-001",
+            amount=payment.amount,
+            currency=payment.currency,
+            status=PaymentAttempt.Status.INITIATED,
+            provider_reference="MOCK-IDEMPOTENT-REF",
+        )
+
+        payload = {
+            "event_id": "API-EVENT-IDEMPOTENT",
+            "event_type": "payment.succeeded",
+            "payload": {
+                "provider_reference": "MOCK-IDEMPOTENT-REF",
+                "status": "success",
+                "transaction_id": "API-TX-IDEMPOTENT",
+            },
+        }
+
+        first = self.client.post(
+            "/api/v1/payments/webhooks/mock/",
+            payload,
+            format="json",
+        )
+
+        second = self.client.post(
+            "/api/v1/payments/webhooks/mock/",
+            payload,
+            format="json",
+        )
+
+        self.assertEqual(
+            first.status_code,
+            200,
+        )
+
+        self.assertEqual(
+            second.status_code,
+            200,
+        )
+
+        self.assertEqual(
+            WebhookEvent.objects.filter(
+                provider="mock",
+                event_id="API-EVENT-IDEMPOTENT",
+            ).count(),
+            1,
+        )
+
+        self.assertEqual(
+            PaymentTransaction.objects.filter(
+                payment=payment,
+                transaction_type=PaymentTransaction.Type.CAPTURE,
+            ).count(),
+            1,
+        )
+
+    def test_unknown_webhook_provider_is_rejected(self):
+        response = self.client.post(
+            "/api/v1/payments/webhooks/unknown/",
+            {
+                "event_id": "UNKNOWN-EVENT",
+                "event_type": "payment.succeeded",
+                "payload": {},
             },
             format="json",
         )
