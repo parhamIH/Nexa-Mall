@@ -1,5 +1,7 @@
-from rest_framework import mixins, permissions, viewsets
+from django_filters.rest_framework import DjangoFilterBackend
+from rest_framework import filters, mixins, permissions, viewsets
 
+from apps.catalog.api.filters import ProductFilter
 from apps.catalog.api.serializers import (
     ProductListSerializer,
     ProductManagementSerializer,
@@ -15,8 +17,38 @@ class ProductPublicViewSet(
     viewsets.GenericViewSet,
 ):
     serializer_class = ProductListSerializer
+
     permission_classes = [
         permissions.AllowAny,
+    ]
+
+    filter_backends = [
+        DjangoFilterBackend,
+        filters.SearchFilter,
+        filters.OrderingFilter,
+    ]
+
+    filterset_class = ProductFilter
+
+    search_fields = [
+        "name",
+        "slug",
+        "description",
+        "brand__name",
+        "variants__sku",
+        "variants__name",
+    ]
+
+    ordering_fields = [
+        "name",
+        "created_at",
+        "updated_at",
+        "slug",
+    ]
+
+    ordering = [
+        "-created_at",
+        "id",
     ]
 
     def get_queryset(self):
@@ -32,8 +64,39 @@ class ProductManagementViewSet(
     viewsets.GenericViewSet,
 ):
     serializer_class = ProductManagementSerializer
+
     permission_classes = [
         CanManageShopCatalog,
+    ]
+
+    filter_backends = [
+        DjangoFilterBackend,
+        filters.SearchFilter,
+        filters.OrderingFilter,
+    ]
+
+    filterset_class = ProductFilter
+
+    search_fields = [
+        "name",
+        "slug",
+        "description",
+        "brand__name",
+        "variants__sku",
+        "variants__name",
+    ]
+
+    ordering_fields = [
+        "name",
+        "status",
+        "created_at",
+        "updated_at",
+        "slug",
+    ]
+
+    ordering = [
+        "-created_at",
+        "id",
     ]
 
     def get_queryset(self):
