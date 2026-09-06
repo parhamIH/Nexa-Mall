@@ -52,6 +52,6 @@ class AuthenticationAPITests(TestCase):
         )
 
         self.assertEqual(
-            response.data["email"],
+            response.data["data"]["email"],
             "user@example.com",
         )

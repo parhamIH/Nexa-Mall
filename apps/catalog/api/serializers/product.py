@@ -59,3 +59,37 @@ class ProductManagementSerializer(serializers.ModelSerializer):
             return value
 
         return value
+
+
+class ProductPaginationMetaSerializer(
+    serializers.Serializer,
+):
+    count = serializers.IntegerField()
+    page = serializers.IntegerField()
+    pages = serializers.IntegerField()
+    page_size = serializers.IntegerField()
+
+    next = serializers.URLField(
+        allow_null=True,
+    )
+
+    previous = serializers.URLField(
+        allow_null=True,
+    )
+
+
+class ProductListResponseSerializer(
+    serializers.Serializer,
+):
+    data = ProductListSerializer(
+        many=True,
+    )
+
+    meta = ProductPaginationMetaSerializer()
+
+
+class ProductDetailResponseSerializer(
+    serializers.Serializer,
+):
+    data = ProductListSerializer()
+    meta = serializers.DictField()

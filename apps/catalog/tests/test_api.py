@@ -85,7 +85,7 @@ class ProductAPITests(TestCase):
 
         ids = {
             item["id"]
-            for item in response.data["results"]
+            for item in response.data["data"]
         }
 
         self.assertIn(
@@ -110,7 +110,7 @@ class ProductAPITests(TestCase):
 
         ids = [
             item["id"]
-            for item in response.data["results"]
+            for item in response.data["data"]
         ]
 
         self.assertNotIn(
@@ -129,7 +129,7 @@ class ProductAPITests(TestCase):
         )
 
         self.assertEqual(
-            response.data["id"],
+            response.data["data"]["id"],
             str(self.active_product.id),
         )
 
@@ -176,7 +176,7 @@ class ProductAPITests(TestCase):
 
         ids = {
             item["id"]
-            for item in response.data["results"]
+            for item in response.data["data"]
         }
 
         self.assertIn(
@@ -198,7 +198,7 @@ class ProductAPITests(TestCase):
         )
 
         self.assertEqual(
-            response.data["count"],
+            response.data["meta"]["count"],
             1,
         )
 
@@ -224,7 +224,7 @@ class ProductAPITests(TestCase):
         )
 
         self.assertEqual(
-            response.data["count"],
+            response.data["meta"]["count"],
             1,
         )
 
@@ -257,7 +257,7 @@ class ProductAPITests(TestCase):
 
         names = [
             item["name"]
-            for item in response.data["results"]
+            for item in response.data["data"]
         ]
 
         self.assertEqual(
@@ -294,7 +294,7 @@ class ProductAPITests(TestCase):
 
         names = [
             item["name"]
-            for item in response.data["results"]
+            for item in response.data["data"]
         ]
 
         self.assertEqual(

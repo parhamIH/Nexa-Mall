@@ -51,6 +51,6 @@ class VersioningTests(TestCase):
         )
 
         self.assertEqual(
-            response.data["version"],
+            response.data["data"]["version"],
             "v1",
         )

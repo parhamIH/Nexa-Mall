@@ -1,8 +1,13 @@
 from django_filters.rest_framework import DjangoFilterBackend
+from drf_spectacular.utils import extend_schema
 from rest_framework import filters, mixins, permissions, viewsets
 
+from apps.api.pagination import StandardPagination
+from apps.api.responses import success_response
 from apps.catalog.api.filters import ProductFilter
 from apps.catalog.api.serializers import (
+    ProductDetailResponseSerializer,
+    ProductListResponseSerializer,
     ProductListSerializer,
     ProductManagementSerializer,
 )
@@ -21,6 +26,8 @@ class ProductPublicViewSet(
     permission_classes = [
         permissions.AllowAny,
     ]
+
+    pagination_class = StandardPagination
 
     filter_backends = [
         DjangoFilterBackend,
@@ -53,6 +60,42 @@ class ProductPublicViewSet(
 
     def get_queryset(self):
         return ProductSelector.public_products()
+
+    @extend_schema(
+        responses=ProductListResponseSerializer,
+    )
+    def list(
+        self,
+        request,
+        *args,
+        **kwargs,
+    ):
+        return super().list(
+            request,
+            *args,
+            **kwargs,
+        )
+
+    @extend_schema(
+        responses=ProductDetailResponseSerializer,
+    )
+    def retrieve(
+        self,
+        request,
+        *args,
+        **kwargs,
+    ):
+        response = super().retrieve(
+            request,
+            *args,
+            **kwargs,
+        )
+
+        return success_response(
+            data=response.data,
+            status_code=response.status_code,
+            headers=response.headers,
+        )
 
 
 class ProductManagementViewSet(
