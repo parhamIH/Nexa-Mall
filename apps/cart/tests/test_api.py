@@ -115,12 +115,12 @@ class CartAPITests(TestCase):
         )
 
         self.assertEqual(
-            response.data["status"],
+            response.data["data"]["status"],
             Cart.Status.ACTIVE,
         )
 
         self.assertEqual(
-            len(response.data["items"]),
+            len(response.data["data"]["items"]),
             1,
         )
 
@@ -158,17 +158,17 @@ class CartAPITests(TestCase):
         )
 
         self.assertEqual(
-            response.data["quantity"],
+            response.data["data"]["quantity"],
             2,
         )
 
         self.assertEqual(
-            response.data["sku"],
+            response.data["data"]["sku"],
             "TEST-001",
         )
 
         self.assertEqual(
-            response.data["product_name"],
+            response.data["data"]["product_name"],
             "Test Product",
         )
 
@@ -201,7 +201,7 @@ class CartAPITests(TestCase):
         )
 
         self.assertEqual(
-            response.data["quantity"],
+            response.data["data"]["quantity"],
             5,
         )
 
@@ -248,7 +248,7 @@ class CartAPITests(TestCase):
         )
 
         self.assertEqual(
-            response.data["quantity"],
+            response.data["data"]["quantity"],
             7,
         )
 
@@ -410,4 +410,44 @@ class CartAPITests(TestCase):
             CartItem.objects.filter(
                 cart__user=self.user,
             ).exists()
+        )
+
+    def test_cart_response_has_standard_contract(self):
+        self.client.force_authenticate(
+            user=self.user,
+        )
+
+        cart = Cart.objects.create(
+            user=self.user,
+            shop=self.shop,
+            status=Cart.Status.ACTIVE,
+        )
+
+        response = self.client.get(
+            self.cart_url(),
+        )
+
+        self.assertEqual(
+            response.status_code,
+            200,
+        )
+
+        self.assertIn(
+            "data",
+            response.data,
+        )
+
+        self.assertIn(
+            "meta",
+            response.data,
+        )
+
+        self.assertEqual(
+            response.data["data"]["id"],
+            str(cart.id),
+        )
+
+        self.assertEqual(
+            response.data["meta"],
+            {},
         )

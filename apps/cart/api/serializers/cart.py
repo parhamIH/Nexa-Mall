@@ -92,3 +92,17 @@ class SetCartItemQuantitySerializer(serializers.Serializer):
     quantity = serializers.IntegerField(
         min_value=1,
     )
+
+
+class CartResponseSerializer(
+    serializers.Serializer,
+):
+    data = CartSerializer()
+    meta = serializers.DictField()
+
+
+class CartItemResponseSerializer(
+    serializers.Serializer,
+):
+    data = CartItemSerializer()
+    meta = serializers.DictField()

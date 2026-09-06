@@ -4,13 +4,18 @@ from drf_spectacular.utils import (
     extend_schema,
 )
 from rest_framework import status
+from rest_framework.exceptions import NotFound
+from rest_framework.exceptions import ValidationError as DRFValidationError
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from apps.api.responses import success_response
 from apps.cart.api.serializers import (
     AddCartItemSerializer,
+    CartItemResponseSerializer,
     CartItemSerializer,
+    CartResponseSerializer,
     CartSerializer,
     SetCartItemQuantitySerializer,
 )
@@ -26,7 +31,7 @@ class CartView(APIView):
 
     @extend_schema(
         responses={
-            200: CartSerializer,
+            200: CartResponseSerializer,
             404: OpenApiResponse(
                 description="Active cart does not exist.",
             ),
@@ -39,16 +44,12 @@ class CartView(APIView):
         )
 
         if cart is None:
-            return Response(
-                {
-                    "detail": "Active cart does not exist.",
-                },
-                status=status.HTTP_404_NOT_FOUND,
+            raise NotFound(
+                "Active cart does not exist."
             )
 
-        return Response(
-            CartSerializer(cart).data,
-            status=status.HTTP_200_OK,
+        return success_response(
+            data=CartSerializer(cart).data,
         )
 
 
@@ -61,7 +62,7 @@ class CartItemCreateView(APIView):
     @extend_schema(
         request=AddCartItemSerializer,
         responses={
-            201: CartItemSerializer,
+            201: CartItemResponseSerializer,
         },
     )
     def post(self, request, shop_id):
@@ -78,11 +79,8 @@ class CartItemCreateView(APIView):
         )
 
         if shop is None:
-            return Response(
-                {
-                    "detail": "Shop not found.",
-                },
-                status=status.HTTP_404_NOT_FOUND,
+            raise NotFound(
+                "Shop not found."
             )
 
         variant = CartSelector.get_variant(
@@ -90,11 +88,8 @@ class CartItemCreateView(APIView):
         )
 
         if variant is None:
-            return Response(
-                {
-                    "detail": "Variant not found.",
-                },
-                status=status.HTTP_404_NOT_FOUND,
+            raise NotFound(
+                "Variant not found."
             )
 
         cart = CartService.get_or_create_cart(
@@ -109,16 +104,13 @@ class CartItemCreateView(APIView):
                 quantity=serializer.validated_data["quantity"],
             )
         except ValidationError as exc:
-            return Response(
-                {
-                    "detail": exc.message,
-                },
-                status=status.HTTP_400_BAD_REQUEST,
+            raise DRFValidationError(
+                exc.message,
             )
 
-        return Response(
-            CartItemSerializer(item).data,
-            status=status.HTTP_201_CREATED,
+        return success_response(
+            data=CartItemSerializer(item).data,
+            status_code=status.HTTP_201_CREATED,
         )
 
 
@@ -130,9 +122,7 @@ class CartItemDetailView(APIView):
 
     @extend_schema(
         request=SetCartItemQuantitySerializer,
-        responses={
-            200: CartItemSerializer,
-        },
+        responses=CartItemResponseSerializer,
     )
     def patch(self, request, item_id):
         item = CartSelector.get_item_for_user(
@@ -141,11 +131,8 @@ class CartItemDetailView(APIView):
         )
 
         if item is None:
-            return Response(
-                {
-                    "detail": "Cart item not found.",
-                },
-                status=status.HTTP_404_NOT_FOUND,
+            raise NotFound(
+                "Cart item not found."
             )
 
         serializer = SetCartItemQuantitySerializer(
@@ -163,16 +150,12 @@ class CartItemDetailView(APIView):
                 user=request.user,
             )
         except ValidationError as exc:
-            return Response(
-                {
-                    "detail": exc.message,
-                },
-                status=status.HTTP_400_BAD_REQUEST,
+            raise DRFValidationError(
+                exc.message,
             )
 
-        return Response(
-            CartItemSerializer(item).data,
-            status=status.HTTP_200_OK,
+        return success_response(
+            data=CartItemSerializer(item).data,
         )
 
     @extend_schema(
@@ -189,11 +172,8 @@ class CartItemDetailView(APIView):
         )
 
         if item is None:
-            return Response(
-                {
-                    "detail": "Cart item not found.",
-                },
-                status=status.HTTP_404_NOT_FOUND,
+            raise NotFound(
+                "Cart item not found."
             )
 
         try:
@@ -202,11 +182,8 @@ class CartItemDetailView(APIView):
                 user=request.user,
             )
         except ValidationError as exc:
-            return Response(
-                {
-                    "detail": exc.message,
-                },
-                status=status.HTTP_400_BAD_REQUEST,
+            raise DRFValidationError(
+                exc.message,
             )
 
         return Response(
