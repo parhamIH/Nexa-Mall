@@ -10,6 +10,7 @@ For the full list of settings and their values, see
 https://docs.djangoproject.com/en/6.0/ref/settings/
 """
 
+import os
 from pathlib import Path
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
@@ -98,16 +99,22 @@ DATABASES = {
     }
 }
 
-#Cache
-# LocMemCache for now (single-process dev/test baseline).
-# DRF throttles use the Django cache, so the cache backend must be
-# reachable without an external server. Redis (django_redis) will be
-# introduced in the performance phase.
+# Cache
+# Django's built-in Redis cache backend (uses redis-py; django-redis
+# is NOT needed). REDIS_URL switches between:
+#   - Django on the host:      redis://127.0.0.1:6379/1
+#   - Django inside compose:   redis://redis:6379/1  (service name)
+# NOTE: the full test suite now requires the Redis container to be up,
+# because DRF throttling shares this same cache.
 
 CACHES = {
     "default": {
-        "BACKEND": "django.core.cache.backends.locmem.LocMemCache",
-        "LOCATION": "nexa-mall-dev",
+        "BACKEND": "django.core.cache.backends.redis.RedisCache",
+        "LOCATION": os.getenv(
+            "REDIS_URL",
+            "redis://127.0.0.1:6379/1",
+        ),
+        "TIMEOUT": 300,
     }
 }
 
