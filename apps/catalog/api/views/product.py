@@ -11,6 +11,10 @@ from apps.catalog.api.serializers import (
     ProductListSerializer,
     ProductManagementSerializer,
 )
+from apps.catalog.cache import (
+    get_product_detail,
+    set_product_detail,
+)
 from apps.catalog.selectors.product import ProductSelector
 from apps.catalog.services.product import ProductService
 from apps.tenants.api.permissions import CanManageShopCatalog
@@ -85,16 +89,32 @@ class ProductPublicViewSet(
         *args,
         **kwargs,
     ):
-        response = super().retrieve(
-            request,
-            *args,
-            **kwargs,
+        product_id = kwargs["pk"]
+
+        cached_data = get_product_detail(
+            product_id=product_id,
+            version=request.version or "v1",
+        )
+
+        if cached_data is not None:
+            return success_response(
+                data=cached_data,
+            )
+
+        product = self.get_object()
+
+        data = self.get_serializer(
+            product,
+        ).data
+
+        set_product_detail(
+            product_id=product.id,
+            data=data,
+            version=request.version or "v1",
         )
 
         return success_response(
-            data=response.data,
-            status_code=response.status_code,
-            headers=response.headers,
+            data=data,
         )
 
 

@@ -1,9 +1,11 @@
 from decimal import Decimal
 
 from django.contrib.auth import get_user_model
+from django.core.cache import cache
 from django.core.exceptions import PermissionDenied
 from django.test import TestCase
 
+from apps.catalog.cache import product_detail_key
 from apps.catalog.models import (
     Product,
     ProductOption,
@@ -179,6 +181,34 @@ class ProductServiceTests(TestCase):
         self.assertEqual(
             updated.name,
             "New Name",
+        )
+
+    def test_update_product_invalidates_cache(self):
+        cache.set(
+            product_detail_key(
+                product_id=self.product.id,
+            ),
+            {
+                "id": str(self.product.id),
+                "name": "Old Product",
+            },
+            300,
+        )
+
+        ProductService.update_product(
+            product=self.product,
+            validated_data={
+                "name": "New Product",
+            },
+            user=self.manager,
+        )
+
+        self.assertIsNone(
+            cache.get(
+                product_detail_key(
+                    product_id=self.product.id,
+                )
+            )
         )
 
     def test_other_tenant_user_cannot_update_product(self):

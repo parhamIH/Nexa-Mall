@@ -1,6 +1,7 @@
 from django.core.exceptions import PermissionDenied
 from django.db import transaction
 
+from apps.catalog.cache import delete_product_detail
 from apps.catalog.models import Product, ProductVariant
 from apps.tenants.models import Shop, TenantMembership
 from apps.tenants.services.access import TenantAccessService
@@ -87,6 +88,10 @@ class ProductService:
             update_fields=["status", "updated_at"]
         )
 
+        delete_product_detail(
+            product_id=product.id,
+        )
+
         return product
 
     @staticmethod
@@ -96,6 +101,10 @@ class ProductService:
 
         product.save(
             update_fields=["status", "updated_at"]
+        )
+
+        delete_product_detail(
+            product_id=product.id,
         )
 
         return product
@@ -134,6 +143,10 @@ class ProductService:
         if categories is not None:
             product.categories.set(categories)
 
+        delete_product_detail(
+            product_id=product.id,
+        )
+
         return product
 
     @staticmethod
@@ -160,4 +173,13 @@ class ProductService:
                 "Only archived products can be deleted."
             )
 
+        # Capture the id before delete: Django nulls the
+        # primary key after Model.delete(), so the cache
+        # key must be built from the pre-delete value.
+        product_id = product.id
+
         product.delete()
+
+        delete_product_detail(
+            product_id=product_id,
+        )
