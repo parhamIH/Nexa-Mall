@@ -5,6 +5,8 @@ PRODUCT_DETAIL_CACHE_VERSION = "v1"
 
 PRODUCT_DETAIL_CACHE_TIMEOUT = 300
 
+PRODUCT_DETAIL_LOCK_TIMEOUT = 10
+
 
 def product_detail_key(
     *,
@@ -14,6 +16,17 @@ def product_detail_key(
     return (
         f"nexa:{version}:catalog:"
         f"product:detail:{product_id}"
+    )
+
+
+def product_detail_lock_key(
+    *,
+    product_id,
+    version=PRODUCT_DETAIL_CACHE_VERSION,
+):
+    return (
+        f"nexa:{version}:lock:"
+        f"catalog:product:detail:{product_id}"
     )
 
 
@@ -37,7 +50,7 @@ def set_product_detail(
     version=PRODUCT_DETAIL_CACHE_VERSION,
     timeout=PRODUCT_DETAIL_CACHE_TIMEOUT,
 ):
-    cache.set(
+    return cache.set(
         product_detail_key(
             product_id=product_id,
             version=version,
@@ -52,7 +65,7 @@ def delete_product_detail(
     product_id,
     version=PRODUCT_DETAIL_CACHE_VERSION,
 ):
-    cache.delete(
+    return cache.delete(
         product_detail_key(
             product_id=product_id,
             version=version,

@@ -1,7 +1,9 @@
 from django_filters.rest_framework import DjangoFilterBackend
 from drf_spectacular.utils import extend_schema
 from rest_framework import filters, mixins, permissions, viewsets
+from rest_framework.exceptions import NotFound
 
+from apps.api.cache import AtomicCacheAside
 from apps.api.pagination import StandardPagination
 from apps.api.responses import success_response
 from apps.catalog.api.filters import ProductFilter
@@ -12,8 +14,10 @@ from apps.catalog.api.serializers import (
     ProductManagementSerializer,
 )
 from apps.catalog.cache import (
-    get_product_detail,
-    set_product_detail,
+    PRODUCT_DETAIL_CACHE_TIMEOUT,
+    PRODUCT_DETAIL_LOCK_TIMEOUT,
+    product_detail_key,
+    product_detail_lock_key,
 )
 from apps.catalog.selectors.product import ProductSelector
 from apps.catalog.services.product import ProductService
@@ -91,27 +95,36 @@ class ProductPublicViewSet(
     ):
         product_id = kwargs["pk"]
 
-        cached_data = get_product_detail(
-            product_id=product_id,
-            version=request.version or "v1",
+        version = request.version or "v1"
+
+        cache_aside = AtomicCacheAside(
+            key=product_detail_key(
+                product_id=product_id,
+                version=version,
+            ),
+            lock_key=product_detail_lock_key(
+                product_id=product_id,
+                version=version,
+            ),
+            timeout=PRODUCT_DETAIL_CACHE_TIMEOUT,
+            lock_timeout=PRODUCT_DETAIL_LOCK_TIMEOUT,
         )
 
-        if cached_data is not None:
-            return success_response(
-                data=cached_data,
+        def load_product():
+            product = self.get_object()
+
+            return self.get_serializer(
+                product,
+            ).data
+
+        data = cache_aside.get(
+            loader=load_product,
+        )
+
+        if data is None:
+            raise NotFound(
+                "Product not found.",
             )
-
-        product = self.get_object()
-
-        data = self.get_serializer(
-            product,
-        ).data
-
-        set_product_detail(
-            product_id=product.id,
-            data=data,
-            version=request.version or "v1",
-        )
 
         return success_response(
             data=data,

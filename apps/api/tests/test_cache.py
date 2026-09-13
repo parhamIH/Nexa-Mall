@@ -1,6 +1,8 @@
 from django.core.cache import cache
 from django.test import TestCase
 
+from apps.api.cache import AtomicCacheAside
+
 
 class CacheInfrastructureTests(TestCase):
 
@@ -56,4 +58,101 @@ class CacheInfrastructureTests(TestCase):
                 "nexa:timeout",
             ),
             "value",
+        )
+
+
+class AtomicCacheAsideTests(TestCase):
+
+    def setUp(self):
+        cache.clear()
+
+    def test_cache_fill_uses_single_lock(self):
+        loader_calls = []
+
+        def loader():
+            loader_calls.append(True)
+
+            return {
+                "value": "database",
+            }
+
+        cache_aside = AtomicCacheAside(
+            key="nexa:test:atomic",
+            lock_key="nexa:lock:test:atomic",
+            timeout=300,
+            lock_timeout=10,
+        )
+
+        first = cache_aside.get(
+            loader=loader,
+        )
+
+        second = cache_aside.get(
+            loader=loader,
+        )
+
+        self.assertEqual(
+            first,
+            {
+                "value": "database",
+            },
+        )
+
+        self.assertEqual(
+            second,
+            {
+                "value": "database",
+            },
+        )
+
+        self.assertEqual(
+            len(loader_calls),
+            1,
+        )
+
+    def test_only_one_request_can_acquire_lock(self):
+        first = cache.add(
+            "nexa:test:atomic-lock",
+            "locked",
+            timeout=10,
+        )
+
+        second = cache.add(
+            "nexa:test:atomic-lock",
+            "locked",
+            timeout=10,
+        )
+
+        self.assertTrue(first)
+
+        self.assertFalse(second)
+
+    def test_loader_failure_releases_lock(self):
+        def failing_loader():
+            raise ValueError(
+                "Source exploded.",
+            )
+
+        cache_aside = AtomicCacheAside(
+            key="nexa:test:fill-failure",
+            lock_key="nexa:lock:test:fill-failure",
+            timeout=300,
+            lock_timeout=10,
+        )
+
+        with self.assertRaises(ValueError):
+            cache_aside.get(
+                loader=failing_loader,
+            )
+
+        self.assertIsNone(
+            cache.get(
+                "nexa:lock:test:fill-failure",
+            )
+        )
+
+        self.assertIsNone(
+            cache.get(
+                "nexa:test:fill-failure",
+            )
         )
