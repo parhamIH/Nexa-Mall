@@ -2,8 +2,12 @@ from django_filters.rest_framework import DjangoFilterBackend
 from drf_spectacular.utils import extend_schema
 from rest_framework import filters, mixins, permissions, viewsets
 from rest_framework.exceptions import NotFound
+from rest_framework.response import Response
 
-from apps.api.cache import StaleWhileRevalidateCache
+from apps.api.cache import (
+    AtomicCacheAside,
+    StaleWhileRevalidateCache,
+)
 from apps.api.pagination import StandardPagination
 from apps.api.responses import success_response
 from apps.catalog.api.filters import ProductFilter
@@ -22,6 +26,9 @@ from apps.catalog.cache import (
     PRODUCT_NOT_FOUND,
     product_detail_key,
     product_detail_lock_key,
+    product_list_cache_timeout,
+    product_list_key,
+    product_list_lock_key,
     set_product_detail,
     set_product_not_found,
 )
@@ -84,10 +91,43 @@ class ProductPublicViewSet(
         *args,
         **kwargs,
     ):
-        return super().list(
-            request,
-            *args,
-            **kwargs,
+        # The list key is derived from the RELEVANT query parameters
+        # (canonicalized + SHA256) and the current namespace version,
+        # so every filter/search/ordering/page combination gets its
+        # own entry while unknown parameters cannot mint new keys.
+        cache_aside = AtomicCacheAside(
+            key=product_list_key(
+                query_params=request.query_params,
+                version=request.version or "v1",
+            ),
+            lock_key=product_list_lock_key(
+                query_params=request.query_params,
+                version=request.version or "v1",
+            ),
+            timeout=product_list_cache_timeout,
+            lock_timeout=10,
+        )
+
+        # Bind the parent list implementation before defining the
+        # loader closure: zero-arg super() does not resolve inside a
+        # nested function (no __class__ cell there).
+        parent_list = super().list
+
+        def load_products():
+            response = parent_list(
+                request,
+                *args,
+                **kwargs,
+            )
+
+            return response.data
+
+        data = cache_aside.get(
+            loader=load_products,
+        )
+
+        return Response(
+            data,
         )
 
     @extend_schema(

@@ -1,6 +1,7 @@
 from decimal import Decimal
 
 from django.contrib.auth import get_user_model
+from django.core.cache import cache
 from django.test import TestCase
 from rest_framework.test import APIClient
 
@@ -25,7 +26,6 @@ class ProductAPITests(TestCase):
             email="manager@example.com",
             password="test-password",
         )
-
         cls.tenant = Tenant.objects.create(
             name="API Tenant",
         )
@@ -72,6 +72,13 @@ class ProductAPITests(TestCase):
             slug="other-product",
             status=Product.Status.ACTIVE,
         )
+
+    def setUp(self):
+        # The public list endpoint is cached by query combination
+        # (no product ids in the key), so entries survive the test
+        # database rollback and would serve stale data to later
+        # tests without an explicit clear.
+        cache.clear()
 
     def test_product_list_returns_active_products_only(self):
         response = self.client.get(
