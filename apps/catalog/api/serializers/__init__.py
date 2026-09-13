@@ -1,4 +1,5 @@
 from .product import (
+    ProductCursorListResponseSerializer,
     ProductDetailResponseSerializer,
     ProductDetailSerializer,
     ProductListResponseSerializer,
@@ -10,6 +11,7 @@ __all__ = [
     "ProductListSerializer",
     "ProductManagementSerializer",
     "ProductListResponseSerializer",
+    "ProductCursorListResponseSerializer",
     "ProductDetailResponseSerializer",
     "ProductDetailSerializer",
 ]

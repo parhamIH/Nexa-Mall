@@ -22,15 +22,15 @@ PRODUCT_LIST_NAMESPACE_KEY = (
 # Only parameters that actually affect the public product list
 # representation participate in the cache key; anything else a
 # client appends must not mint a new cache entry (key explosion
-# protection).
+# protection). The cursor IS the page position under cursor
+# pagination, so it replaces the old `page` parameter.
 PRODUCT_LIST_RELEVANT_PARAMETERS = (
     "status",
     "brand",
     "category",
     "shop",
     "search",
-    "ordering",
-    "page",
+    "cursor",
     "page_size",
 )
 

@@ -204,9 +204,20 @@ class ProductAPITests(TestCase):
             200,
         )
 
-        self.assertEqual(
-            response.data["meta"]["count"],
-            1,
+        # Cursor contract: no count in meta; assert on the data.
+        ids = {
+            item["id"]
+            for item in response.data["data"]
+        }
+
+        self.assertIn(
+            str(self.active_product.id),
+            ids,
+        )
+
+        self.assertNotIn(
+            str(self.draft_product.id),
+            ids,
         )
 
     def test_search_by_variant_sku(self):
@@ -230,12 +241,28 @@ class ProductAPITests(TestCase):
             200,
         )
 
+        ids = {
+            item["id"]
+            for item in response.data["data"]
+        }
+
         self.assertEqual(
-            response.data["meta"]["count"],
-            1,
+            ids,
+            {
+                str(self.active_product.id),
+            },
         )
 
-    def test_ordering_by_name(self):
+    # Ordering moved to the MANAGEMENT endpoint: the public list is
+    # cursor-paginated on a fixed -created_at ordering and no longer
+    # accepts ?ordering= (cursor stability by design).
+
+    def test_management_ordering_by_name(self):
+        client = APIClient()
+        client.force_authenticate(
+            user=self.manager,
+        )
+
         Product.objects.create(
             shop=self.shop,
             name="AAA Product",
@@ -250,8 +277,9 @@ class ProductAPITests(TestCase):
             status=Product.Status.ACTIVE,
         )
 
-        response = self.client.get(
-            "/api/v1/catalog/products/",
+        response = client.get(
+            f"/api/v1/catalog/manage/"
+            f"shops/{self.shop.id}/products/",
             {
                 "ordering": "name",
             },
@@ -264,7 +292,7 @@ class ProductAPITests(TestCase):
 
         names = [
             item["name"]
-            for item in response.data["data"]
+            for item in response.data["results"]
         ]
 
         self.assertEqual(
@@ -272,7 +300,12 @@ class ProductAPITests(TestCase):
             sorted(names),
         )
 
-    def test_descending_ordering(self):
+    def test_management_descending_ordering(self):
+        client = APIClient()
+        client.force_authenticate(
+            user=self.manager,
+        )
+
         Product.objects.create(
             shop=self.shop,
             name="AAA Product",
@@ -287,8 +320,9 @@ class ProductAPITests(TestCase):
             status=Product.Status.ACTIVE,
         )
 
-        response = self.client.get(
-            "/api/v1/catalog/products/",
+        response = client.get(
+            f"/api/v1/catalog/manage/"
+            f"shops/{self.shop.id}/products/",
             {
                 "ordering": "-name",
             },
@@ -301,7 +335,7 @@ class ProductAPITests(TestCase):
 
         names = [
             item["name"]
-            for item in response.data["data"]
+            for item in response.data["results"]
         ]
 
         self.assertEqual(

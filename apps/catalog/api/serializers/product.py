@@ -78,6 +78,20 @@ class ProductPaginationMetaSerializer(
     )
 
 
+class ProductCursorPaginationMetaSerializer(
+    serializers.Serializer,
+):
+    page_size = serializers.IntegerField()
+
+    next = serializers.URLField(
+        allow_null=True,
+    )
+
+    previous = serializers.URLField(
+        allow_null=True,
+    )
+
+
 class ProductListResponseSerializer(
     serializers.Serializer,
 ):
@@ -86,6 +100,16 @@ class ProductListResponseSerializer(
     )
 
     meta = ProductPaginationMetaSerializer()
+
+
+class ProductCursorListResponseSerializer(
+    serializers.Serializer,
+):
+    data = ProductListSerializer(
+        many=True,
+    )
+
+    meta = ProductCursorPaginationMetaSerializer()
 
 
 class ProductDetailResponseSerializer(

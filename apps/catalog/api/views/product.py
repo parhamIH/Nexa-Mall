@@ -8,10 +8,14 @@ from apps.api.cache import (
     AtomicCacheAside,
     StaleWhileRevalidateCache,
 )
-from apps.api.pagination import StandardPagination
+from apps.api.pagination import (
+    StandardCursorPagination,
+    StandardPagination,
+)
 from apps.api.responses import success_response
 from apps.catalog.api.filters import ProductFilter
 from apps.catalog.api.serializers import (
+    ProductCursorListResponseSerializer,
     ProductDetailResponseSerializer,
     ProductDetailSerializer,
     ProductListResponseSerializer,
@@ -48,12 +52,19 @@ class ProductPublicViewSet(
         permissions.AllowAny,
     ]
 
-    pagination_class = StandardPagination
+    # Cursor pagination: stable traversal of a large, read-heavy
+    # public catalog. Management endpoints keep PageNumberPagination
+    # (page-jumping UI needs) - pagination follows the workload of
+    # each API, not a project-wide single strategy.
+    pagination_class = StandardCursorPagination
 
+    # Deliberately NO OrderingFilter here: the cursor is built on a
+    # fixed, immutable ordering (-created_at). Arbitrary ?ordering=
+    # would require its own index + cursor-stability analysis per
+    # field. Filtering and search remain supported.
     filter_backends = [
         DjangoFilterBackend,
         filters.SearchFilter,
-        filters.OrderingFilter,
     ]
 
     filterset_class = ProductFilter
@@ -67,23 +78,11 @@ class ProductPublicViewSet(
         "variants__name",
     ]
 
-    ordering_fields = [
-        "name",
-        "created_at",
-        "updated_at",
-        "slug",
-    ]
-
-    ordering = [
-        "-created_at",
-        "id",
-    ]
-
     def get_queryset(self):
         return ProductSelector.public_products()
 
     @extend_schema(
-        responses=ProductListResponseSerializer,
+        responses=ProductCursorListResponseSerializer,
     )
     def list(
         self,

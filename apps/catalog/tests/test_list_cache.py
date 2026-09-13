@@ -36,8 +36,8 @@ class ProductListCacheKeyTests(TestCase):
     def test_same_query_has_same_key(self):
         params = query_dict(
             search="nike",
-            ordering="-created_at",
-            page="2",
+            cursor="abc123",
+            page_size="20",
         )
 
         self.assertEqual(
@@ -46,9 +46,9 @@ class ProductListCacheKeyTests(TestCase):
         )
 
     def test_query_parameter_order_does_not_change_key(self):
-        one = query_dict(search="nike", ordering="-created_at", page="2")
+        one = query_dict(search="nike", cursor="abc123", page_size="20")
 
-        two = query_dict(page="2", ordering="-created_at", search="nike")
+        two = query_dict(page_size="20", cursor="abc123", search="nike")
 
         self.assertEqual(
             product_list_key(query_params=one),
@@ -71,6 +71,29 @@ class ProductListCacheKeyTests(TestCase):
         self.assertNotEqual(
             product_list_key(query_params=params, version="v1"),
             product_list_key(query_params=params, version="v2"),
+        )
+
+    def test_different_cursors_use_different_cache_keys(self):
+        one = query_dict(cursor="cursor-a")
+
+        two = query_dict(cursor="cursor-b")
+
+        self.assertNotEqual(
+            product_list_key(query_params=one),
+            product_list_key(query_params=two),
+        )
+
+    def test_page_parameter_no_longer_mints_keys(self):
+        # Under cursor pagination `page` is an unknown parameter: it
+        # must be ignored by the cache key (no orphan entries).
+        one = query_dict(search="nike")
+
+        two = query_dict(search="nike")
+        two.appendlist("page", "2")
+
+        self.assertEqual(
+            product_list_key(query_params=one),
+            product_list_key(query_params=two),
         )
 
     def test_irrelevant_query_parameter_does_not_change_key(self):
@@ -208,7 +231,7 @@ class ProductListCacheAPITests(TestCase):
     def test_product_mutation_invalidates_list_cache(self):
         url = "/api/v1/catalog/products/"
 
-        # Warm the list cache: count = 1.
+        # Warm the list cache: 1 item.
         first = self.client.get(url)
 
         self.assertEqual(
@@ -217,7 +240,7 @@ class ProductListCacheAPITests(TestCase):
         )
 
         self.assertEqual(
-            first.data["meta"]["count"],
+            len(first.data["data"]),
             1,
         )
 
@@ -235,7 +258,7 @@ class ProductListCacheAPITests(TestCase):
         # A new product changes the list representation. The
         # service runs on COMMIT: the detail invalidation deletes
         # its entry and the namespace bump makes ALL list keys
-        # (every filter/search/page combination) unreachable.
+        # (every filter/search/cursor combination) unreachable.
         with self.captureOnCommitCallbacks(
             execute=True,
         ):
@@ -258,9 +281,9 @@ class ProductListCacheAPITests(TestCase):
             200,
         )
 
-        # Fresh data - not the stale cached count.
+        # Fresh data - not the stale cached page.
         self.assertEqual(
-            third.data["meta"]["count"],
+            len(third.data["data"]),
             2,
         )
 
@@ -270,7 +293,7 @@ class ProductListCacheAPITests(TestCase):
         warm = self.client.get(url)
 
         self.assertEqual(
-            warm.data["meta"]["count"],
+            len(warm.data["data"]),
             1,
         )
 
@@ -286,6 +309,6 @@ class ProductListCacheAPITests(TestCase):
         )
 
         self.assertEqual(
-            after_bump.data["meta"]["count"],
+            len(after_bump.data["data"]),
             1,
         )
