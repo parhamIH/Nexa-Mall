@@ -35,7 +35,7 @@ class AtomicCacheAside:
         *,
         key: str,
         lock_key: str,
-        timeout: int,
+        timeout: int | Callable[[], int],
         lock_timeout: int = 10,
         set_loader_value: bool = True,
     ):
@@ -49,6 +49,15 @@ class AtomicCacheAside:
         # the caller publishes it itself and this helper must not
         # re-set it with the positive-data timeout.
         self.set_loader_value = set_loader_value
+
+    def _get_timeout(self) -> int:
+        # Static ints are used as-is; callables are evaluated at
+        # fill time so a jittered TTL is decided per fill and never
+        # re-rolled on a cache hit.
+        if callable(self.timeout):
+            return self.timeout()
+
+        return self.timeout
 
     def get(
         self,
@@ -102,7 +111,7 @@ class AtomicCacheAside:
                     cache.set(
                         self.key,
                         value,
-                        timeout=self.timeout,
+                        timeout=self._get_timeout(),
                     )
 
                 return value

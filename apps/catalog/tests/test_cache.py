@@ -6,9 +6,16 @@ from django.test import TestCase
 from django.test.utils import CaptureQueriesContext
 from rest_framework.test import APIClient
 
+from apps.api.redis import get_redis_client
 from apps.catalog.cache import (
+    PRODUCT_DETAIL_CACHE_JITTER,
+    PRODUCT_DETAIL_CACHE_TIMEOUT,
     PRODUCT_NOT_FOUND,
+    PRODUCT_NOT_FOUND_JITTER,
+    PRODUCT_NOT_FOUND_TIMEOUT,
     delete_product_detail,
+    product_detail_cache_timeout,
+    product_not_found_cache_timeout,
 )
 from apps.catalog.cache import product_detail_key
 from apps.catalog.models import Product
@@ -314,4 +321,93 @@ class ProductCacheTests(TestCase):
 
         self.assertIsNone(
             cache.get(key),
+        )
+
+    # =========================================================
+    # TTL Jitter (Cache Avalanche protection)
+    # =========================================================
+
+    def test_product_detail_ttl_has_jitter(self):
+        values = [
+            product_detail_cache_timeout()
+            for _ in range(100)
+        ]
+
+        minimum = (
+            PRODUCT_DETAIL_CACHE_TIMEOUT
+            - PRODUCT_DETAIL_CACHE_JITTER
+        )
+
+        maximum = (
+            PRODUCT_DETAIL_CACHE_TIMEOUT
+            + PRODUCT_DETAIL_CACHE_JITTER
+        )
+
+        self.assertTrue(
+            all(
+                minimum <= value <= maximum
+                for value in values
+            )
+        )
+
+    def test_product_not_found_ttl_has_jitter(self):
+        values = [
+            product_not_found_cache_timeout()
+            for _ in range(100)
+        ]
+
+        minimum = (
+            PRODUCT_NOT_FOUND_TIMEOUT
+            - PRODUCT_NOT_FOUND_JITTER
+        )
+
+        maximum = (
+            PRODUCT_NOT_FOUND_TIMEOUT
+            + PRODUCT_NOT_FOUND_JITTER
+        )
+
+        self.assertTrue(
+            all(
+                minimum <= value <= maximum
+                for value in values
+            )
+        )
+
+    def test_cache_set_uses_jittered_ttl_range(self):
+        # Django's cache API has no ttl(); read the real TTL from
+        # Redis via the raw client on the prefixed cache key.
+        redis_client = get_redis_client()
+
+        key = product_detail_key(
+            product_id=self.product.id,
+        )
+
+        self.client.get(
+            self.product_url(),
+        )
+
+        ttl = redis_client.ttl(
+            cache.make_key(key),
+        )
+
+        minimum = (
+            PRODUCT_DETAIL_CACHE_TIMEOUT
+            - PRODUCT_DETAIL_CACHE_JITTER
+        )
+
+        maximum = (
+            PRODUCT_DETAIL_CACHE_TIMEOUT
+            + PRODUCT_DETAIL_CACHE_JITTER
+        )
+
+        # The TTL was set moments ago, so allow one second of
+        # drift below the theoretical lower bound.
+        self.assertGreaterEqual(
+            ttl,
+            minimum - 1,
+        )
+
+        self.assertLessEqual(
+            ttl,
+            maximum,
         )

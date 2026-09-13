@@ -14,10 +14,10 @@ from apps.catalog.api.serializers import (
     ProductManagementSerializer,
 )
 from apps.catalog.cache import (
-    PRODUCT_DETAIL_CACHE_TIMEOUT,
     PRODUCT_DETAIL_LOCK_TIMEOUT,
     PRODUCT_NOT_FOUND,
     get_product_detail,
+    product_detail_cache_timeout,
     product_detail_key,
     product_detail_lock_key,
     set_product_detail,
@@ -129,12 +129,12 @@ class ProductPublicViewSet(
                 product_id=product_id,
                 version=version,
             ),
-            timeout=PRODUCT_DETAIL_CACHE_TIMEOUT,
+            timeout=product_detail_cache_timeout,
             lock_timeout=PRODUCT_DETAIL_LOCK_TIMEOUT,
             # The loader publishes both outcomes itself with the
-            # correct domain TTL (positive 300s, negative 60s); the
-            # helper only coordinates, it must not re-publish with
-            # its own single timeout.
+            # correct jittered domain TTL (positive 300±60s,
+            # negative 60±10s); the helper only coordinates, it must
+            # not re-publish with its own single timeout.
             set_loader_value=False,
         )
 
