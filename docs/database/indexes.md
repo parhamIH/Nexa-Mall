@@ -29,6 +29,9 @@ migration.
 | Product | `shop + slug` | UNIQUE `(shop, slug)` | Slug uniqueness — unique constraint implies the index, no duplicate index |
 | Variant | `product + status` | `(product, status)` | Variant lookup per product |
 | Variant | `sku` | UNIQUE `sku` | Global SKU identity |
+| Product (search) | `UPPER(name/slug/description) LIKE '%q%'` | GIN `Upper(col)` + `gin_trgm_ops` (pg_trgm) | Substring search: leading-wildcard LIKE cannot use B-tree; trigram bitmap scan |
+| Variant (search) | `UPPER(sku/name) LIKE '%q%'` | GIN `Upper(col)` + `gin_trgm_ops` | Search on variants__sku / variants__name |
+| Brand (search) | `UPPER(name) LIKE '%q%'` | GIN `Upper(name)` + `gin_trgm_ops` | Search on brand__name |
 | InventoryItem | `variant` (OneToOne) | UNIQUE `variant` | `get(variant=...)` runtime lookup |
 | Reservation | `status + expires_at` | `(status, expires_at)` | Expiration worker sweep |
 | Reservation | `inventory + status` | `(inventory, status)` | Active reservations per item |
@@ -96,6 +99,51 @@ precisely → index refined — never a blind first draft.
 
 ---
 
+## ADR-002 — Trigram GIN Search Indexes (pg_trgm)
+
+**Decision:** PostgreSQL (docker service `postgres`) as the project
+database; hand-written migration `catalog.0003` enables the
+`pg_trgm` extension BEFORE `catalog.0004/0005` create six GIN
+trigram indexes — as **functional indexes on `Upper(col)`** with
+`OpClass(..., gin_trgm_ops)`: `product_name/slug/desc`,
+`variant_sku/name`, `brand_name`.
+
+**Reason:** DRF `SearchFilter`/`icontains` compiles to
+`UPPER(col) LIKE '%q%'` — NOT `ILIKE` (verified from the generated
+SQL). Two consequences:
+1. a plain B-tree cannot serve a leading-wildcard LIKE at all;
+2. a plain-column GIN would still never match, because the
+   predicate is `UPPER(col)` — the index must be on the EXPRESSION
+   (`Upper(col)`), making the index and the predicate identical.
+`pg_trgm` turns the trigrams of the pattern into a bitmap index
+scan of candidate rows.
+
+**EXPLAIN ANALYZE evidence** (60k-row seed, `ANALYZE` run):
+- needle search (1/60000): **Bitmap Heap Scan + Bitmap Index Scan
+  on product_name_trgm_idx**, `Index Cond: (upper((name)::text) ~~
+  '%MODEL 00427%')`, 6.1ms
+- broad search (12.5% selectivity): planner rightly stays on a
+  Seq Scan — index usage is a cost decision; a small table or a
+  low-selectivity pattern does not need (and may not use) the
+  index. That is not a defect.
+
+**Rejected / deferred:**
+- Plain-column GIN (first attempt) — never usable: the query
+  predicate is UPPER(col), verified by EXPLAIN before the fix
+- Elasticsearch/OpenSearch — deferred until search needs fuzzy
+  ranking, typo tolerance, synonyms, faceting or hundreds of
+  millions of docs; do not introduce a distributed search engine
+  before the workload demands it
+- All-search-fields GIN everywhere — each GIN adds write cost;
+  the description index especially is a workload-driven decision
+  to revisit with real data
+
+**Operational notes:** migrations use plain `AddIndex` (dev);
+for large production tables use `AddIndexConcurrently`. Refresh
+statistics with `ANALYZE` after bulk loads.
+
+---
+
 ## Deliberately NOT built (yet) — and why
 
 | Candidate | Why deferred |
@@ -107,7 +155,7 @@ precisely → index refined — never a blind first draft.
 | `(status, created_at)` NEW variants like `(-created_at, id)` | B-tree reverse scan already serves DESC; no duplicate |
 | Partial index `(created_at) WHERE status=ACTIVE` | needs real data distribution first (selectivity) |
 | Covering index / INCLUDE | needs index-only-scan workload evidence |
-| pg_trgm / GIN for search fields | search (`icontains`) is not served by B-tree; decide after measuring real search load (PostgreSQL-only) |
+| pg_trgm / GIN for search fields | built (ADR-002) — see above; Elasticsearch deferred |
 
 Rules captured here:
 

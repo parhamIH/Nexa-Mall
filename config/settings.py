@@ -13,9 +13,17 @@ https://docs.djangoproject.com/en/6.0/ref/settings/
 import os
 from pathlib import Path
 
+from dotenv import load_dotenv
+
+# Load the project .env (BASE_DIR/.env) so compose-host ports,
+# credentials and cache URLs come from one place. Real
+# environment variables still win over .env values.
+load_dotenv(
+    Path(__file__).resolve().parent.parent / ".env"
+)
+
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
-
 
 # Quick-start development settings - unsuitable for production
 # See https://docs.djangoproject.com/en/6.0/howto/deployment/checklist/
@@ -39,6 +47,8 @@ INSTALLED_APPS = [
     "django.contrib.sessions",
     "django.contrib.messages",
     "django.contrib.staticfiles",
+    # Postgres-specific fields/operations (pg_trgm migration etc.)
+    "django.contrib.postgres",
 
     # Third-party
     "rest_framework",
@@ -91,11 +101,20 @@ WSGI_APPLICATION = 'config.wsgi.application'
 
 # Database
 # https://docs.djangoproject.com/en/6.0/ref/settings/#databases
+#
+# PostgreSQL (Docker service `postgres`): needed for pg_trgm/GIN
+# trigram search indexes. Connection params are env-overridable but
+# default to the compose service.
 
 DATABASES = {
-    'default': {
-        'ENGINE': 'django.db.backends.sqlite3',
-        'NAME': BASE_DIR / 'db.sqlite3',
+    "default": {
+        "ENGINE": "django.db.backends.postgresql",
+        "NAME": os.getenv("POSTGRES_DB", "nexa_mall"),
+        "USER": os.getenv("POSTGRES_USER", "nexa"),
+        "PASSWORD": os.getenv("POSTGRES_PASSWORD", "nexa"),
+        "HOST": os.getenv("POSTGRES_HOST", "127.0.0.1"),
+        "PORT": os.getenv("POSTGRES_PORT", "5433"),
+        "CONN_MAX_AGE": os.getenv("POSTGRES_CONN_MAX_AGE", 60),
     }
 }
 

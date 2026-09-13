@@ -1,4 +1,6 @@
+from django.contrib.postgres.indexes import GinIndex, OpClass
 from django.db import models
+from django.db.models.functions import Upper
 
 from ..managers import ProductVariantManager
 import uuid
@@ -75,6 +77,16 @@ class ProductVariant(models.Model):
         indexes = [
             models.Index(
                 fields=["product", "status"],
+            ),
+            # Functional trigram GIN on Upper(col): Django's
+            # icontains compiles to UPPER(col) LIKE '%..%'.
+            GinIndex(
+                OpClass(Upper("sku"), name="gin_trgm_ops"),
+                name="variant_sku_trgm_idx",
+            ),
+            GinIndex(
+                OpClass(Upper("name"), name="gin_trgm_ops"),
+                name="variant_name_trgm_idx",
             ),
         ]
 

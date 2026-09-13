@@ -1,5 +1,6 @@
 import time
 import uuid
+from decimal import Decimal
 
 from django.core.cache import cache
 from django.db import connection
@@ -570,8 +571,8 @@ class ProductCacheTests(TestCase):
         )
 
         self.assertEqual(
-            str(data["min_variant_price"]),
-            "100000",
+            Decimal(str(data["min_variant_price"])),
+            Decimal("100000.00"),
         )
 
         # SerializerMethodFields consumed prefetched data only:
@@ -652,9 +653,10 @@ class ProductCacheTests(TestCase):
             1,
         )
 
-        # The SQL MIN drops the decimal scale ("100000"), unlike
-        # the old Python min() over full-scale DecimalFields.
+        # The SQL MIN's decimal scale differs per backend (PostgreSQL
+        # keeps "100000.00", SQLite renders "100000"): compare as
+        # Decimal, never as a string.
         self.assertEqual(
-            str(data["min_variant_price"]),
-            "100000",
+            Decimal(str(data["min_variant_price"])),
+            Decimal("100000.00"),
         )

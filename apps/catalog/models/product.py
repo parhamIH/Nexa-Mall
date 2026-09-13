@@ -1,4 +1,6 @@
+from django.contrib.postgres.indexes import GinIndex, OpClass
 from django.db import models
+from django.db.models.functions import Upper
 import uuid
 from ..managers import ProductManager
 
@@ -77,6 +79,25 @@ class Product(models.Model):
             ),
             models.Index(
                 fields=["status", "created_at"],
+            ),
+            # Trigram GIN indexes for substring search. IMPORTANT:
+            # Django's icontains compiles to UPPER(col) LIKE '%..%'
+            # (NOT ILIKE), so the index must be a FUNCTIONAL index on
+            # Upper(col) - a plain column index can never match the
+            # query's UPPER(...) predicate. A leading-wildcard LIKE
+            # cannot use B-tree; pg_trgm turns it into a trigram
+            # bitmap index scan. PostgreSQL-only.
+            GinIndex(
+                OpClass(Upper("name"), name="gin_trgm_ops"),
+                name="product_name_trgm_idx",
+            ),
+            GinIndex(
+                OpClass(Upper("slug"), name="gin_trgm_ops"),
+                name="product_slug_trgm_idx",
+            ),
+            GinIndex(
+                OpClass(Upper("description"), name="gin_trgm_ops"),
+                name="product_desc_trgm_idx",
             ),
         ]
 

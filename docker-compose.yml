@@ -15,6 +15,27 @@ services:
       - --appendonly
       - "yes"
 
+  postgres:
+    image: postgres:16-alpine
+    container_name: nexa-mall-postgres
+    restart: unless-stopped
+    ports:
+      # Host port 5433: a native Windows PostgreSQL already owns 5432,
+      # so the container publishes on 5433 to avoid clashing with it.
+      - "5433:5432"
+    environment:
+      POSTGRES_USER: nexa
+      POSTGRES_PASSWORD: nexa
+      POSTGRES_DB: nexa_mall
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U nexa -d nexa_mall"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
 
 volumes:
   redis_data:
+  postgres_data:

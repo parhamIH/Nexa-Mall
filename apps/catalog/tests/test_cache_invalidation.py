@@ -212,8 +212,8 @@ class ProductCacheInvalidationTests(TestCase):
         )
 
         self.assertEqual(
-            str(first.data["data"]["min_variant_price"]),
-            "500000",
+            Decimal(str(first.data["data"]["min_variant_price"])),
+            Decimal("500000"),
         )
 
         self.assertIsNotNone(
@@ -256,8 +256,8 @@ class ProductCacheInvalidationTests(TestCase):
         )
 
         self.assertEqual(
-            str(second.data["data"]["min_variant_price"]),
-            "600000",
+            Decimal(str(second.data["data"]["min_variant_price"])),
+            Decimal("600000"),
         )
 
     def test_variant_delete_invalidates_product_cache(self):

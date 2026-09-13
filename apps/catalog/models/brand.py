@@ -1,4 +1,6 @@
+from django.contrib.postgres.indexes import GinIndex, OpClass
 from django.db import models
+from django.db.models.functions import Upper
 import uuid
 
 
@@ -40,6 +42,16 @@ class Brand(models.Model):
     updated_at = models.DateTimeField(
         auto_now=True,
     )
+
+    class Meta:
+        indexes = [
+            # Functional trigram GIN on Upper(name): Django's
+            # icontains compiles to UPPER(col) LIKE '%..%'.
+            GinIndex(
+                OpClass(Upper("name"), name="gin_trgm_ops"),
+                name="brand_name_trgm_idx",
+            ),
+        ]
 
     def __str__(self):
         return self.name
