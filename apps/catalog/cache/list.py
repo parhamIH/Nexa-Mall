@@ -11,6 +11,14 @@ PRODUCT_LIST_CACHE_JITTER = 30
 
 PRODUCT_LIST_LOCK_TIMEOUT = 10
 
+# Cache SCHEMA version, independent from the API URL version: bump
+# it whenever the cached VALUE shape changes (serializer fields,
+# search algorithm, ranking weights...) while the API is still v1.
+# Old- and new-algorithm entries must never share a key - the same
+# ?search=nike could otherwise be served stale from the previous,
+# unranked representation.
+PRODUCT_LIST_CACHE_SCHEMA_VERSION = "v2"
+
 # The list namespace version lives in a single, non-expiring key.
 # Bumping it invalidates EVERY list combination at once without
 # scanning or deleting thousands of hash keys (lazy invalidation:
@@ -154,6 +162,7 @@ def product_list_key(
     return (
         f"nexa:{version}:catalog:"
         f"product:list:"
+        f"{PRODUCT_LIST_CACHE_SCHEMA_VERSION}:"
         f"v{namespace}:"
         f"{_product_list_digest(query_params=query_params)}"
     )
@@ -169,6 +178,7 @@ def product_list_lock_key(
     return (
         f"nexa:{version}:lock:"
         f"catalog:product:list:"
+        f"{PRODUCT_LIST_CACHE_SCHEMA_VERSION}:"
         f"v{namespace}:"
         f"{_product_list_digest(query_params=query_params)}"
     )

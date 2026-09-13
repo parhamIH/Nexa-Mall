@@ -5,6 +5,7 @@ from .invalidation import (
 )
 from .list import (
     PRODUCT_LIST_CACHE_JITTER,
+    PRODUCT_LIST_CACHE_SCHEMA_VERSION,
     PRODUCT_LIST_CACHE_TIMEOUT,
     PRODUCT_LIST_LOCK_TIMEOUT,
     bump_product_list_namespace,
@@ -54,6 +55,7 @@ __all__ = [
     "invalidate_brand_products",
     "PRODUCT_LIST_CACHE_TIMEOUT",
     "PRODUCT_LIST_CACHE_JITTER",
+    "PRODUCT_LIST_CACHE_SCHEMA_VERSION",
     "PRODUCT_LIST_LOCK_TIMEOUT",
     "product_list_key",
     "product_list_lock_key",

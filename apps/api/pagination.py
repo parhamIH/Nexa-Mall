@@ -74,3 +74,39 @@ class StandardCursorPagination(CursorPagination):
                 },
             }
         )
+
+
+class SearchAwareCursorPagination(StandardCursorPagination):
+    """
+    CursorPagination ALWAYS enforces its own ordering (it overwrites
+    any order_by applied earlier, e.g. by a search-ranking filter
+    backend) - so a ranked queryset would silently lose its ranking.
+
+    This variant inspects the (already filter-processed) queryset:
+    when a search_relevance annotation exists, the cursor ordering
+    becomes (-search_relevance, -created_at, id) so relevance rules
+    and the cursor walks THAT order; otherwise the default
+    -created_at timeline applies.
+    """
+
+    def get_ordering(self, request, queryset, view):
+        ordering = super().get_ordering(
+            request,
+            queryset,
+            view,
+        )
+
+        annotations = getattr(
+            queryset.query,
+            "annotations",
+            {},
+        )
+
+        if "search_relevance" in annotations:
+            return [
+                "-search_relevance",
+                "-created_at",
+                "id",
+            ]
+
+        return ordering

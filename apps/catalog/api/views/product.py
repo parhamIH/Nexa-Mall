@@ -9,11 +9,14 @@ from apps.api.cache import (
     StaleWhileRevalidateCache,
 )
 from apps.api.pagination import (
-    StandardCursorPagination,
+    SearchAwareCursorPagination,
     StandardPagination,
 )
 from apps.api.responses import success_response
 from apps.catalog.api.filters import ProductFilter
+from apps.catalog.api.filters.search import (
+    TrigramProductSearchFilter,
+)
 from apps.catalog.api.serializers import (
     ProductCursorListResponseSerializer,
     ProductDetailResponseSerializer,
@@ -55,16 +58,18 @@ class ProductPublicViewSet(
     # Cursor pagination: stable traversal of a large, read-heavy
     # public catalog. Management endpoints keep PageNumberPagination
     # (page-jumping UI needs) - pagination follows the workload of
-    # each API, not a project-wide single strategy.
-    pagination_class = StandardCursorPagination
+    # each API, not a project-wide single strategy. The search-aware
+    # variant switches the cursor ordering to relevance ranking when
+    # a search is active.
+    pagination_class = SearchAwareCursorPagination
 
     # Deliberately NO OrderingFilter here: the cursor is built on a
-    # fixed, immutable ordering (-created_at). Arbitrary ?ordering=
-    # would require its own index + cursor-stability analysis per
-    # field. Filtering and search remain supported.
+    # fixed, immutable ordering (-created_at), or on the ranked
+    # ordering while searching. Arbitrary ?ordering= would require
+    # its own index + cursor-stability analysis per field.
     filter_backends = [
         DjangoFilterBackend,
-        filters.SearchFilter,
+        TrigramProductSearchFilter,
     ]
 
     filterset_class = ProductFilter
