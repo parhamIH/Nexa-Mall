@@ -56,3 +56,32 @@ def invalidate_products(
     transaction.on_commit(
         _invalidate,
     )
+
+
+def invalidate_brand_products(
+    *,
+    brand_id,
+):
+    """
+    Fan-out invalidation: a brand attribute (e.g. name) lives inside
+    the product detail representation (brand_name field), so a
+    brand change makes every product of that brand stale.
+
+    The affected ids are collected at CALL time - i.e. BEFORE the
+    surrounding transaction mutates anything - and materialized by
+    invalidate_products, so the invalidation set is exactly the set
+    of products that referenced the brand at mutation time.
+    """
+
+    from apps.catalog.models import Product
+
+    product_ids = Product.objects.filter(
+        brand_id=brand_id,
+    ).values_list(
+        "id",
+        flat=True,
+    )
+
+    invalidate_products(
+        product_ids=product_ids,
+    )

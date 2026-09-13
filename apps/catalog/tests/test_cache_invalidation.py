@@ -4,11 +4,17 @@ from django.core.cache import cache
 from django.test import TestCase
 
 from apps.catalog.cache import (
+    invalidate_brand_products,
     invalidate_product,
     invalidate_products,
     product_detail_key,
 )
-from apps.catalog.models import Product, ProductVariant
+from apps.catalog.models import (
+    Brand,
+    Product,
+    ProductVariant,
+)
+from apps.catalog.services.brand import BrandService
 from apps.catalog.services.variant import VariantService
 from apps.tenants.models import Shop, Tenant
 
@@ -47,6 +53,35 @@ class ProductCacheInvalidationTests(TestCase):
             slug="product-b",
             status=Product.Status.ACTIVE,
         )
+
+        cls.brand = Brand.objects.create(
+            name="Nike",
+            slug="nike",
+        )
+
+        cls.brand_products = [
+            Product.objects.create(
+                shop=cls.shop,
+                name="Nike Product A",
+                slug="nike-product-a",
+                brand=cls.brand,
+                status=Product.Status.ACTIVE,
+            ),
+            Product.objects.create(
+                shop=cls.shop,
+                name="Nike Product B",
+                slug="nike-product-b",
+                brand=cls.brand,
+                status=Product.Status.ACTIVE,
+            ),
+            Product.objects.create(
+                shop=cls.shop,
+                name="Nike Product C",
+                slug="nike-product-c",
+                brand=cls.brand,
+                status=Product.Status.ACTIVE,
+            ),
+        ]
 
     def setUp(self):
         cache.clear()
@@ -283,4 +318,100 @@ class ProductCacheInvalidationTests(TestCase):
                     product_id=self.product_b.id,
                 )
             )
+        )
+
+    # =========================================================
+    # Brand → Product caches fan-out invalidation
+    # =========================================================
+
+    def test_brand_update_invalidates_related_product_caches(self):
+        # Warm the detail cache of every Nike product plus one
+        # unrelated product (no brand) as the control group.
+        control_key = product_detail_key(
+            product_id=self.product.id,
+        )
+
+        cache.set(
+            control_key,
+            {
+                "id": str(self.product.id),
+            },
+            timeout=300,
+        )
+
+        for product in self.brand_products:
+            cache.set(
+                product_detail_key(
+                    product_id=product.id,
+                ),
+                {
+                    "id": str(product.id),
+                    "brand_name": "Nike",
+                },
+                timeout=300,
+            )
+
+        with self.captureOnCommitCallbacks(
+            execute=True,
+        ):
+            BrandService.update_brand(
+                brand=self.brand,
+                validated_data={
+                    "name": "Nike Inc.",
+                },
+            )
+
+        # Every product of the brand is stale now: brand_name is
+        # part of their cached detail representation.
+        for product in self.brand_products:
+            self.assertIsNone(
+                cache.get(
+                    product_detail_key(
+                        product_id=product.id,
+                    )
+                )
+            )
+
+        # Unrelated products keep their cache entries.
+        self.assertIsNotNone(
+            cache.get(
+                product_detail_key(
+                    product_id=self.product.id,
+                )
+            )
+        )
+
+    def test_brand_delete_requires_no_products(self):
+        empty_brand = Brand.objects.create(
+            name="Empty Brand",
+            slug="empty-brand",
+        )
+
+        with self.assertRaises(ValueError):
+            with self.captureOnCommitCallbacks(
+                execute=True,
+            ):
+                BrandService.delete_brand(
+                    brand=self.brand,
+                )
+
+        # The brand still exists (PROTECT semantics kept intact).
+        self.assertTrue(
+            Brand.objects.filter(
+                id=self.brand.id,
+            ).exists()
+        )
+
+        # Deleting a brand without products works.
+        with self.captureOnCommitCallbacks(
+            execute=True,
+        ):
+            BrandService.delete_brand(
+                brand=empty_brand,
+            )
+
+        self.assertFalse(
+            Brand.objects.filter(
+                id=empty_brand.id,
+            ).exists()
         )

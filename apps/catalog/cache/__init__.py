@@ -1,4 +1,5 @@
 from .invalidation import (
+    invalidate_brand_products,
     invalidate_product,
     invalidate_products,
 )
@@ -40,4 +41,5 @@ __all__ = [
     "delete_product_detail",
     "invalidate_product",
     "invalidate_products",
+    "invalidate_brand_products",
 ]
