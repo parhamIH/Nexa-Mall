@@ -4,17 +4,23 @@ from typing import Any
 
 from django.core.cache import cache
 
+from apps.api.locks import RedisLock
+
 
 class AtomicCacheAside:
     """
     Cache-aside with single-flight (stampede) protection.
 
-    GET / SET / ADD are each a single atomic Redis command, but the
+    GET / SET are each a single atomic Redis command, but the
     GET -> source -> SET chain is not atomic: without coordination,
-    N concurrent misses would all hit the source at once. This helper
-    uses a lock (cache.add has add-if-not-exists semantics) so that
-    per key only one worker performs the expensive fill while the
-    others wait and re-read.
+    N concurrent misses would all hit the source at once (cache
+    stampede / dogpile). Per key, only one worker performs the
+    expensive fill while the others wait and re-read.
+
+    The fill is guarded by a token-owned RedisLock: acquire is a
+    single atomic SET NX EX command and release is an atomic Lua
+    compare-and-delete, so a worker whose lock has expired can
+    never delete a lock that is now owned by another worker.
 
     This is a cache lock (stampede protection) and deliberately NOT a
     database lock: state-changing races still belong to
@@ -51,16 +57,16 @@ class AtomicCacheAside:
             return value
 
         # -------------------------
-        # 2. Try to become the single cache filler
+        # 2. Try to become the single
+        #    cache filler (SET NX EX)
         # -------------------------
 
-        acquired = cache.add(
-            self.lock_key,
-            "locked",
+        lock = RedisLock(
+            key=self.lock_key,
             timeout=self.lock_timeout,
         )
 
-        if acquired:
+        if lock.acquire():
             try:
                 # -------------------------
                 # 3. Double-check: a previous filler may have
@@ -95,8 +101,9 @@ class AtomicCacheAside:
 
             finally:
                 # Always release, even when the loader raised;
-                # the lock TTL is the crash-safety net.
-                cache.delete(self.lock_key)
+                # the lock TTL is the crash-safety net. Only the
+                # token owner can release (atomic Lua check).
+                lock.release()
 
         # -------------------------
         # 6. Another worker owns the fill: wait and re-read
@@ -110,14 +117,12 @@ class AtomicCacheAside:
             if value is not None:
                 return value
 
-            # The filler finished (or its lock expired) without
-            # publishing a value - typically a loader that raised,
-            # e.g. a 404. Stop waiting and go to the source instead
-            # of burning the full retry budget: a contended 404 must
-            # not turn every waiter into a 5-second request.
-            if cache.get(self.lock_key) is None:
-                break
+        # -------------------------
+        # 7. Fail-open fallback: the fill did not land within the
+        #    retry budget (slow or failed filler). Serve the
+        #    request straight from the source instead of failing it.
+        #    Exceptional path only; the normal flow stays
+        #    single-flight.
+        # -------------------------
 
-        # Fallback: fill it ourselves
-        # (availability over stampede protection).
         return loader()

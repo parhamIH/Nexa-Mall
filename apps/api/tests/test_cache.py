@@ -1,7 +1,11 @@
+import threading
+import time
+
 from django.core.cache import cache
 from django.test import TestCase
 
 from apps.api.cache import AtomicCacheAside
+from apps.api.redis import get_redis_client
 
 
 class CacheInfrastructureTests(TestCase):
@@ -128,6 +132,8 @@ class AtomicCacheAsideTests(TestCase):
         self.assertFalse(second)
 
     def test_loader_failure_releases_lock(self):
+        client = get_redis_client()
+
         def failing_loader():
             raise ValueError(
                 "Source exploded.",
@@ -145,8 +151,10 @@ class AtomicCacheAsideTests(TestCase):
                 loader=failing_loader,
             )
 
+        # The lock is a raw token key outside Django's versioned
+        # key space, so it must be checked with the raw client.
         self.assertIsNone(
-            cache.get(
+            client.get(
                 "nexa:lock:test:fill-failure",
             )
         )
@@ -155,4 +163,74 @@ class AtomicCacheAsideTests(TestCase):
             cache.get(
                 "nexa:test:fill-failure",
             )
+        )
+
+
+class CacheStampedeTests(TestCase):
+
+    def setUp(self):
+        cache.clear()
+
+    def test_only_one_loader_runs(self):
+        loader_count = 0
+        counter_lock = threading.Lock()
+
+        def loader():
+            nonlocal loader_count
+
+            with counter_lock:
+                loader_count += 1
+
+            time.sleep(0.2)
+
+            return {
+                "value": "from-database",
+            }
+
+        cache_aside = AtomicCacheAside(
+            key="nexa:test:stampede",
+            lock_key="nexa:test:stampede:lock",
+            timeout=300,
+            lock_timeout=10,
+        )
+
+        results = []
+
+        def worker():
+            result = cache_aside.get(
+                loader=loader,
+            )
+
+            results.append(result)
+
+        threads = [
+            threading.Thread(
+                target=worker,
+            )
+            for _ in range(10)
+        ]
+
+        for thread in threads:
+            thread.start()
+
+        for thread in threads:
+            thread.join()
+
+        self.assertEqual(
+            len(results),
+            10,
+        )
+
+        self.assertTrue(
+            all(
+                result == {
+                    "value": "from-database",
+                }
+                for result in results
+            )
+        )
+
+        self.assertEqual(
+            loader_count,
+            1,
         )
