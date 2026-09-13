@@ -4,6 +4,7 @@ from django.test import TestCase
 from django.test.utils import CaptureQueriesContext
 from rest_framework.test import APIClient
 
+from apps.catalog.cache import product_detail_key
 from apps.catalog.models import Product
 from apps.tenants.models import Shop, Tenant
 
@@ -61,7 +62,7 @@ class ProductCacheTests(TestCase):
         self.assertIsNotNone(
             cache.get(
                 f"nexa:v1:catalog:"
-                f"product:{self.product.id}"
+                f"product:detail:{self.product.id}"
             )
         )
 
@@ -110,7 +111,7 @@ class ProductCacheTests(TestCase):
         self.assertIsNotNone(
             cache.get(
                 f"nexa:v1:catalog:"
-                f"product:{self.product.id}"
+                f"product:detail:{self.product.id}"
             )
         )
 
@@ -128,6 +129,96 @@ class ProductCacheTests(TestCase):
         self.assertIsNone(
             cache.get(
                 f"nexa:v1:catalog:"
-                f"product:{self.product.id}"
+                f"product:detail:{self.product.id}"
             )
+        )
+
+    def test_product_detail_key_is_deterministic(self):
+        key = product_detail_key(
+            product_id=self.product.id,
+        )
+
+        self.assertEqual(
+            key,
+            (
+                "nexa:v1:catalog:"
+                f"product:detail:{self.product.id}"
+            ),
+        )
+
+    def test_product_cache_versions_do_not_collide(self):
+        key_v1 = product_detail_key(
+            product_id=self.product.id,
+            version="v1",
+        )
+
+        key_v2 = product_detail_key(
+            product_id=self.product.id,
+            version="v2",
+        )
+
+        self.assertNotEqual(
+            key_v1,
+            key_v2,
+        )
+
+    def test_product_cache_expires(self):
+        key = product_detail_key(
+            product_id=self.product.id,
+        )
+
+        cache.set(
+            key,
+            {
+                "name": "Temporary",
+            },
+            timeout=1,
+        )
+
+        self.assertEqual(
+            cache.get(key),
+            {
+                "name": "Temporary",
+            },
+        )
+
+    def test_different_versions_store_different_values(self):
+        v1_key = product_detail_key(
+            product_id=self.product.id,
+            version="v1",
+        )
+
+        v2_key = product_detail_key(
+            product_id=self.product.id,
+            version="v2",
+        )
+
+        cache.set(
+            v1_key,
+            {
+                "name": "Old Response",
+            },
+            timeout=300,
+        )
+
+        cache.set(
+            v2_key,
+            {
+                "name": "New Response",
+            },
+            timeout=300,
+        )
+
+        self.assertEqual(
+            cache.get(v1_key),
+            {
+                "name": "Old Response",
+            },
+        )
+
+        self.assertEqual(
+            cache.get(v2_key),
+            {
+                "name": "New Response",
+            },
         )
