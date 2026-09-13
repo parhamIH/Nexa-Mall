@@ -1,3 +1,7 @@
+from .invalidation import (
+    invalidate_product,
+    invalidate_products,
+)
 from .product import (
     PRODUCT_DETAIL_CACHE_VERSION,
     PRODUCT_DETAIL_FRESH_TIMEOUT,
@@ -34,4 +38,6 @@ __all__ = [
     "set_product_detail",
     "set_product_not_found",
     "delete_product_detail",
+    "invalidate_product",
+    "invalidate_products",
 ]

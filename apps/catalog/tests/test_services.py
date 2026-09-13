@@ -195,13 +195,20 @@ class ProductServiceTests(TestCase):
             300,
         )
 
-        ProductService.update_product(
-            product=self.product,
-            validated_data={
-                "name": "New Product",
-            },
-            user=self.manager,
-        )
+        # Cache invalidation runs on COMMIT: the service method
+        # wraps itself in transaction.atomic, and TestCase wraps
+        # the test in an outer transaction, so the delete only fires
+        # when the callbacks are executed here.
+        with self.captureOnCommitCallbacks(
+            execute=True,
+        ):
+            ProductService.update_product(
+                product=self.product,
+                validated_data={
+                    "name": "New Product",
+                },
+                user=self.manager,
+            )
 
         self.assertIsNone(
             cache.get(

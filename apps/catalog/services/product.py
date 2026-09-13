@@ -1,7 +1,7 @@
 from django.core.exceptions import PermissionDenied
 from django.db import transaction
 
-from apps.catalog.cache import delete_product_detail
+from apps.catalog.cache import invalidate_product
 from apps.catalog.models import Product, ProductVariant
 from apps.tenants.models import Shop, TenantMembership
 from apps.tenants.services.access import TenantAccessService
@@ -66,8 +66,8 @@ class ProductService:
         # A brand-new id normally has no cache entry, but if a
         # negative (not-found) marker was cached for this UUID
         # earlier, it must go - otherwise the API would keep serving
-        # 404 for a product that now exists.
-        delete_product_detail(
+        # 404 for a product that now exists. Runs after COMMIT.
+        invalidate_product(
             product_id=product.id,
         )
 
@@ -96,7 +96,7 @@ class ProductService:
             update_fields=["status", "updated_at"]
         )
 
-        delete_product_detail(
+        invalidate_product(
             product_id=product.id,
         )
 
@@ -111,7 +111,7 @@ class ProductService:
             update_fields=["status", "updated_at"]
         )
 
-        delete_product_detail(
+        invalidate_product(
             product_id=product.id,
         )
 
@@ -151,7 +151,7 @@ class ProductService:
         if categories is not None:
             product.categories.set(categories)
 
-        delete_product_detail(
+        invalidate_product(
             product_id=product.id,
         )
 
@@ -188,6 +188,6 @@ class ProductService:
 
         product.delete()
 
-        delete_product_detail(
+        invalidate_product(
             product_id=product_id,
         )
