@@ -158,26 +158,22 @@ class ProductDetailSerializer(
 
         read_only_fields = fields
 
-    # SerializerMethodFields are part of the representation cost:
-    # they must consume prefetched relations only - never trigger
-    # queries per field (N+1).
+    # SerializerMethodFields must stay cheap: both values come from
+    # database annotations (COUNT/MIN computed by the selector in
+    # the same query), never from Python loops over related rows.
+    # The serialized object MUST therefore come from an annotated
+    # queryset (see ProductSelector.public_product_detail).
 
     def get_variant_count(
         self,
         obj,
     ) -> int:
-        return len(obj.variants.all())
+        return obj.variant_count
 
     def get_min_variant_price(
         self,
         obj,
     ):
-        prices = [
-            variant.price
-            for variant in obj.variants.all()
-        ]
-
-        if not prices:
-            return None
-
-        return min(prices)
+        # SQL MIN over an empty join returns NULL -> None when the
+        # product has no variants (same as the old Python fallback).
+        return obj.min_variant_price

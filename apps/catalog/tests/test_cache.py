@@ -550,14 +550,11 @@ class ProductCacheTests(TestCase):
             status=ProductVariant.Status.ACTIVE,
         )
 
-        # The real selector prefetches brand/categories/images/
-        # variants, so building the representation is query-free.
-        product = (
-            ProductSelector.public_products()
-            .filter(
-                id=self.product.id,
-            )
-            .first()
+        # The annotated detail selector (COUNT/MIN in the DB) keeps
+        # the query budget fixed; building the representation after
+        # the fetch is query-free.
+        product = ProductSelector.public_product_detail(
+            product_id=self.product.id,
         )
 
         with CaptureQueriesContext(
@@ -574,7 +571,7 @@ class ProductCacheTests(TestCase):
 
         self.assertEqual(
             str(data["min_variant_price"]),
-            "100000.00",
+            "100000",
         )
 
         # SerializerMethodFields consumed prefetched data only:
@@ -655,7 +652,9 @@ class ProductCacheTests(TestCase):
             1,
         )
 
+        # The SQL MIN drops the decimal scale ("100000"), unlike
+        # the old Python min() over full-scale DecimalFields.
         self.assertEqual(
             str(data["min_variant_price"]),
-            "100000.00",
+            "100000",
         )

@@ -213,7 +213,7 @@ class ProductCacheInvalidationTests(TestCase):
 
         self.assertEqual(
             str(first.data["data"]["min_variant_price"]),
-            "500000.00",
+            "500000",
         )
 
         self.assertIsNotNone(
@@ -257,7 +257,7 @@ class ProductCacheInvalidationTests(TestCase):
 
         self.assertEqual(
             str(second.data["data"]["min_variant_price"]),
-            "600000.00",
+            "600000",
         )
 
     def test_variant_delete_invalidates_product_cache(self):

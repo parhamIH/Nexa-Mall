@@ -1,4 +1,8 @@
-from django.db.models import QuerySet
+from django.db.models import (
+    Count,
+    Min,
+    QuerySet,
+)
 
 from apps.catalog.models  import Product
 
@@ -14,6 +18,52 @@ class ProductSelector:
             Product.objects
             .with_relations()
             .get(id=product_id)
+        )
+
+    @staticmethod
+    def public_product_detail(
+        *,
+        product_id,
+    ):
+        """
+        Detail read model for the public API.
+
+        The aggregate values the detail serializer exposes
+        (variant_count, min_variant_price) are computed by the
+        DATABASE in the same query (COUNT/MIN over a single join),
+        not by iterating related rows in Python. Query budget is
+        fixed regardless of variant count: 1 main query
+        (product + shop + brand + annotations) plus one prefetch
+        query per relation (categories, images, variants).
+
+        The prefetches stay: the serializer also embeds the variant
+        rows themselves, so the joined aggregates and the prefetched
+        lists serve different fields.
+        """
+        return (
+            Product.objects
+            .filter(
+                id=product_id,
+                status=Product.Status.ACTIVE,
+            )
+            .select_related(
+                "shop",
+                "brand",
+            )
+            .prefetch_related(
+                "categories",
+                "images",
+                "variants",
+            )
+            .annotate(
+                variant_count=Count(
+                    "variants",
+                ),
+                min_variant_price=Min(
+                    "variants__price",
+                ),
+            )
+            .first()
         )
 
     @staticmethod

@@ -167,12 +167,10 @@ class ProductPublicViewSet(
         )
 
         def load_product():
-            product = (
-                ProductSelector.public_products()
-                .filter(
-                    id=product_id,
-                )
-                .first()
+            # Annotated read model: COUNT/MIN for the method fields
+            # are computed by the database in the same query.
+            product = ProductSelector.public_product_detail(
+                product_id=product_id,
             )
 
             if product is None:
