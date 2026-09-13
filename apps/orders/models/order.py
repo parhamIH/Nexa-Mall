@@ -113,13 +113,31 @@ class Order(models.Model):
                 fields=["shop", "status"],
             ),
             models.Index(
-                fields=["user", "created_at"],
-            ),
-            models.Index(
                 fields=["status", "created_at"],
             ),
+            # Listing indexes, refined to the EXACT query shape:
+            # WHERE <equality> ORDER BY created_at DESC, id ASC.
+            # The third column (id) is the deterministic tie-breaker
+            # that keeps pagination stable; the explicit DESC on
+            # created_at matches the sort so the B-tree serves the
+            # whole ordering. They REPLACE the earlier two-column
+            # variants for the same query - keeping both would tax
+            # every order INSERT twice for one workload.
             models.Index(
-                fields=["shop", "created_at"],
+                fields=[
+                    "user",
+                    "-created_at",
+                    "id",
+                ],
+                name="order_user_created_id_idx",
+            ),
+            models.Index(
+                fields=[
+                    "shop",
+                    "-created_at",
+                    "id",
+                ],
+                name="order_shop_created_id_idx",
             ),
         ]
 

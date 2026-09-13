@@ -33,8 +33,8 @@ migration.
 | Reservation | `status + expires_at` | `(status, expires_at)` | Expiration worker sweep |
 | Reservation | `inventory + status` | `(inventory, status)` | Active reservations per item |
 | Reservation | `order + status` | `(order, status)` | Reservations per order |
-| Order | `user + ORDER BY -created_at` | `(user, created_at)` | Customer order listing (ADR-001) |
-| Order | `shop + ORDER BY -created_at` | `(shop, created_at)` | Shop management listing (ADR-001) |
+| Order | `user + ORDER BY -created_at, id` | `(user, -created_at, id)` `order_user_created_id_idx` | Customer order listing (ADR-001) |
+| Order | `shop + ORDER BY -created_at, id` | `(shop, -created_at, id)` `order_shop_created_id_idx` | Shop management listing (ADR-001) |
 | Order | `shop + status` / `(status, created_at)` | kept from earlier phases | Scoped/status sweeps |
 | OrderItem | `order` / `variant` | automatic FK indexes | Django indexes FKs by default |
 | StockMovement | `inventory` | automatic FK index | History per item — no manual duplicate |
@@ -47,10 +47,10 @@ migration.
 Public product list   → INDEX SCAN on (status, created_at)
 Shop-only filter      → INDEX SCAN on (shop, status)      [leftmost prefix]
 Status-only filter    → INDEX SCAN on (status, created_at) [leftmost prefix]
-Customer orders       → INDEX SCAN on orders_orde_user_id_37fed6_idx (user_id=?)
-Shop management       → INDEX SCAN on orders_orde_shop_id_c267ca_idx (shop_id=?)
+Customer orders       → INDEX SCAN on order_user_created_id_idx, NO sort node (v2)
+Shop management       → INDEX SCAN on order_shop_created_id_idx, NO sort node (v2)
 shop_orders selector  → PK on shop, UNIQUE (user_id, tenant_id) on membership,
-                        then the (shop, created_at) index on orders
+                        then the (shop, -created_at, id) index on orders
 ```
 
 No sequential scans on the measured workloads. Planner may still
@@ -61,15 +61,29 @@ index defect.
 
 ## ADR-001 — Order Listing Indexes
 
-**Decision:** `(user, created_at)` and `(shop, created_at)` on
-`orders.Order` (already present in the model — verified by the index
-audit; no new migration was needed).
+**Decision (v2, refined):** `(user, -created_at, id)` and
+`(shop, -created_at, id)` on `orders.Order`, named
+`order_user_created_id_idx` / `order_shop_created_id_idx`
+(migration `orders.0003`).
 
 **Reason:** the two dominant listing workloads are
-`WHERE user = X ORDER BY created_at DESC` (customer history) and
-`WHERE shop = X ORDER BY created_at DESC` (shop management). A
-leading-column equality plus an ordering column lets the B-tree serve
-the filter and (via reverse scan) the sort.
+`WHERE user = X ORDER BY created_at DESC, id` (customer history) and
+`WHERE shop = X ORDER BY created_at DESC, id` (shop management).
+Matching the EXACT shape — leading equality column, the sort column
+in the query's direction, then the deterministic `id` tie-breaker —
+lets the B-tree serve the filter AND the whole ordering. EXPLAIN
+before/after (SQLite dev): the two-column version needed
+`USE TEMP B-TREE FOR RIGHT PART OF ORDER BY` (a separate sort); the
+three-column version is a single index search with no sort node.
+
+**Evolution (v1 → v2):** v1 was `(user, created_at)` /
+`(shop, created_at)` — correct for the filter+sort prefix, but the
+real query also sorts by `id` as a pagination tie-breaker. The v2
+indexes REPLACE the v1 ones in the same migration (removed
+`orders_orde_user_id_37fed6_idx`, `orders_orde_shop_id_c267ca_idx`);
+keeping both would tax every order INSERT twice for one workload.
+This is index design as a living decision: query understood more
+precisely → index refined — never a blind first draft.
 
 **Rejected:**
 - Single-column `(user)` / `(shop)` / `(created_at)` indexes — two
@@ -77,6 +91,8 @@ the filter and (via reverse scan) the sort.
   composite can; `(created_at)` alone has terrible selectivity.
 - Composite `(id, user)` for order detail — `id` is the PK; a PK
   lookup already narrows to one row, appending `user` adds nothing.
+- Keeping the v1 two-column indexes alongside v2 — duplicate
+  maintenance cost for the same workload.
 
 ---
 
