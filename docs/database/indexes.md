@@ -1,0 +1,108 @@
+# Nexa Mall Database Index Strategy
+
+> Every index must be able to finish this sentence:
+> **"This index was built for query #X."**
+> If it cannot, it does not get created. Indexes speed reads but
+> tax every INSERT/UPDATE/DELETE with storage and maintenance.
+
+Method (enforced in this project):
+
+```text
+Query Pattern → WHERE + ORDER BY + JOIN → Index Design
+→ EXPLAIN → Migration → Re-measure
+```
+
+Audit tool: `python manage.py audit_indexes` prints the REAL
+indexes/constraints of every table next to what each model declares
+(`Meta.indexes`), making model-vs-database drift visible before any
+migration.
+
+---
+
+## Index Strategy Matrix
+
+| Domain | Query (WHERE / ORDER BY) | Index | Reason |
+|---|---|---|---|
+| Product | `shop + status` | `(shop, status)` | Management listing scope |
+| Product | `status` + `ORDER BY -created_at, id` | `(status, created_at)` | Public listing (filter + ordering prefix) |
+| Product | `id = UUID` | PRIMARY KEY | Detail lookup — no manual `id` index (PK already is one) |
+| Product | `shop + slug` | UNIQUE `(shop, slug)` | Slug uniqueness — unique constraint implies the index, no duplicate index |
+| Variant | `product + status` | `(product, status)` | Variant lookup per product |
+| Variant | `sku` | UNIQUE `sku` | Global SKU identity |
+| InventoryItem | `variant` (OneToOne) | UNIQUE `variant` | `get(variant=...)` runtime lookup |
+| Reservation | `status + expires_at` | `(status, expires_at)` | Expiration worker sweep |
+| Reservation | `inventory + status` | `(inventory, status)` | Active reservations per item |
+| Reservation | `order + status` | `(order, status)` | Reservations per order |
+| Order | `user + ORDER BY -created_at` | `(user, created_at)` | Customer order listing (ADR-001) |
+| Order | `shop + ORDER BY -created_at` | `(shop, created_at)` | Shop management listing (ADR-001) |
+| Order | `shop + status` / `(status, created_at)` | kept from earlier phases | Scoped/status sweeps |
+| OrderItem | `order` / `variant` | automatic FK indexes | Django indexes FKs by default |
+| StockMovement | `inventory` | automatic FK index | History per item — no manual duplicate |
+| TenantMembership | `user + tenant` | UNIQUE `(user, tenant)` | Join path user → tenant; also serves `filter(tenant, user)` |
+| Cart | `user + shop` | UNIQUE `(user, shop)` (+ partial ACTIVE) | One active cart per user-shop |
+
+## EXPLAIN evidence (SQLite dev, small seeds)
+
+```text
+Public product list   → INDEX SCAN on (status, created_at)
+Shop-only filter      → INDEX SCAN on (shop, status)      [leftmost prefix]
+Status-only filter    → INDEX SCAN on (status, created_at) [leftmost prefix]
+Customer orders       → INDEX SCAN on orders_orde_user_id_37fed6_idx (user_id=?)
+Shop management       → INDEX SCAN on orders_orde_shop_id_c267ca_idx (shop_id=?)
+shop_orders selector  → PK on shop, UNIQUE (user_id, tenant_id) on membership,
+                        then the (shop, created_at) index on orders
+```
+
+No sequential scans on the measured workloads. Planner may still
+choose a seq scan in tiny tables — that is a cost decision, not an
+index defect.
+
+---
+
+## ADR-001 — Order Listing Indexes
+
+**Decision:** `(user, created_at)` and `(shop, created_at)` on
+`orders.Order` (already present in the model — verified by the index
+audit; no new migration was needed).
+
+**Reason:** the two dominant listing workloads are
+`WHERE user = X ORDER BY created_at DESC` (customer history) and
+`WHERE shop = X ORDER BY created_at DESC` (shop management). A
+leading-column equality plus an ordering column lets the B-tree serve
+the filter and (via reverse scan) the sort.
+
+**Rejected:**
+- Single-column `(user)` / `(shop)` / `(created_at)` indexes — two
+  separate structures cannot serve filter+ORDER BY the way one
+  composite can; `(created_at)` alone has terrible selectivity.
+- Composite `(id, user)` for order detail — `id` is the PK; a PK
+  lookup already narrows to one row, appending `user` adds nothing.
+
+---
+
+## Deliberately NOT built (yet) — and why
+
+| Candidate | Why deferred |
+|---|---|
+| `Index(fields=["id"])` anywhere | PK is already the index |
+| `Index(fields=["shop", "slug"])` on Product | the UNIQUE constraint already creates it |
+| `Index(fields=["inventory"])` on StockMovement | automatic FK index already exists |
+| `(status, shop)` on Product | dominant queries lead with shop; leftmost-prefix rule |
+| `(status, created_at)` NEW variants like `(-created_at, id)` | B-tree reverse scan already serves DESC; no duplicate |
+| Partial index `(created_at) WHERE status=ACTIVE` | needs real data distribution first (selectivity) |
+| Covering index / INCLUDE | needs index-only-scan workload evidence |
+| pg_trgm / GIN for search fields | search (`icontains`) is not served by B-tree; decide after measuring real search load (PostgreSQL-only) |
+
+Rules captured here:
+
+1. **PK / Unique constraint / FK** → already indexed by the
+   database or Django; never duplicate them.
+2. **Leftmost prefix** — a composite serves filters on its leading
+   columns; design order by the dominant query's equality columns
+   first, ordering column last.
+3. **Selectivity** — an index on a 95%-value column (e.g. status
+   when almost everything is ACTIVE) buys little; UUID/PK lookups
+   are the high-selectivity sweet spot.
+4. **cost ≠ time** — EXPLAIN's cost unit is an internal planner
+   estimate, not milliseconds; real timing requires EXPLAIN
+   ANALYZE (PostgreSQL only, read-only queries).
