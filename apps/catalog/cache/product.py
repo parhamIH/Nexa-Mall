@@ -1,16 +1,25 @@
 import random
+import time
 
 from django.core.cache import cache
 
 
 PRODUCT_DETAIL_CACHE_VERSION = "v1"
 
-PRODUCT_DETAIL_CACHE_TIMEOUT = 300
+# Stale-while-revalidate (hot-key / breakdown protection):
+# - fresh: served instantly, no source access
+# - stale window (fresh..hard): previous value still served
+#   instantly while exactly one worker revalidates
+# - hard: the Redis TTL; past it the key is a real miss and plain
+#   single-flight waiting applies again
+PRODUCT_DETAIL_FRESH_TIMEOUT = 60
 
-# Avalanche protection: each fill gets a TTL spread over
-# [300 - 60, 300 + 60] seconds, so products cached together do
-# not all expire at the same instant and hammer the database.
-PRODUCT_DETAIL_CACHE_JITTER = 60
+PRODUCT_DETAIL_HARD_TIMEOUT = 300
+
+# Avalanche protection: each fill draws a hard TTL spread over
+# [hard - jitter, hard + jitter] seconds, so products cached
+# together do not all expire at the same instant.
+PRODUCT_DETAIL_HARD_TIMEOUT_JITTER = 60
 
 PRODUCT_DETAIL_LOCK_TIMEOUT = 10
 
@@ -46,12 +55,12 @@ def product_detail_lock_key(
     )
 
 
-def product_detail_cache_timeout():
+def product_detail_hard_cache_timeout():
     return random.randint(
-        PRODUCT_DETAIL_CACHE_TIMEOUT
-        - PRODUCT_DETAIL_CACHE_JITTER,
-        PRODUCT_DETAIL_CACHE_TIMEOUT
-        + PRODUCT_DETAIL_CACHE_JITTER,
+        PRODUCT_DETAIL_HARD_TIMEOUT
+        - PRODUCT_DETAIL_HARD_TIMEOUT_JITTER,
+        PRODUCT_DETAIL_HARD_TIMEOUT
+        + PRODUCT_DETAIL_HARD_TIMEOUT_JITTER,
     )
 
 
@@ -84,17 +93,25 @@ def set_product_detail(
     version=PRODUCT_DETAIL_CACHE_VERSION,
     timeout=None,
 ):
+    """Publish the SWR envelope: payload + stale_at (soft window)."""
+
     if timeout is None:
-        # A fresh, jittered TTL per fill (never re-rolled on a
+        # A fresh, jittered hard TTL per fill (never re-rolled on a
         # cache hit) spreads expirations over time.
-        timeout = product_detail_cache_timeout()
+        timeout = product_detail_hard_cache_timeout()
+
+    envelope = {
+        "data": data,
+        "stale_at": time.time()
+        + PRODUCT_DETAIL_FRESH_TIMEOUT,
+    }
 
     return cache.set(
         product_detail_key(
             product_id=product_id,
             version=version,
         ),
-        data,
+        envelope,
         timeout=timeout,
     )
 

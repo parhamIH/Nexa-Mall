@@ -1,3 +1,4 @@
+import time
 import uuid
 
 from django.core.cache import cache
@@ -6,18 +7,22 @@ from django.test import TestCase
 from django.test.utils import CaptureQueriesContext
 from rest_framework.test import APIClient
 
+from apps.api.locks import RedisLock
 from apps.api.redis import get_redis_client
 from apps.catalog.cache import (
-    PRODUCT_DETAIL_CACHE_JITTER,
-    PRODUCT_DETAIL_CACHE_TIMEOUT,
+    PRODUCT_DETAIL_HARD_TIMEOUT,
+    PRODUCT_DETAIL_HARD_TIMEOUT_JITTER,
     PRODUCT_NOT_FOUND,
     PRODUCT_NOT_FOUND_JITTER,
     PRODUCT_NOT_FOUND_TIMEOUT,
     delete_product_detail,
-    product_detail_cache_timeout,
+    product_detail_hard_cache_timeout,
     product_not_found_cache_timeout,
 )
-from apps.catalog.cache import product_detail_key
+from apps.catalog.cache import (
+    product_detail_key,
+    product_detail_lock_key,
+)
 from apps.catalog.models import Product
 from apps.tenants.models import Shop, Tenant
 
@@ -327,20 +332,20 @@ class ProductCacheTests(TestCase):
     # TTL Jitter (Cache Avalanche protection)
     # =========================================================
 
-    def test_product_detail_ttl_has_jitter(self):
+    def test_product_detail_hard_ttl_has_jitter(self):
         values = [
-            product_detail_cache_timeout()
+            product_detail_hard_cache_timeout()
             for _ in range(100)
         ]
 
         minimum = (
-            PRODUCT_DETAIL_CACHE_TIMEOUT
-            - PRODUCT_DETAIL_CACHE_JITTER
+            PRODUCT_DETAIL_HARD_TIMEOUT
+            - PRODUCT_DETAIL_HARD_TIMEOUT_JITTER
         )
 
         maximum = (
-            PRODUCT_DETAIL_CACHE_TIMEOUT
-            + PRODUCT_DETAIL_CACHE_JITTER
+            PRODUCT_DETAIL_HARD_TIMEOUT
+            + PRODUCT_DETAIL_HARD_TIMEOUT_JITTER
         )
 
         self.assertTrue(
@@ -391,13 +396,13 @@ class ProductCacheTests(TestCase):
         )
 
         minimum = (
-            PRODUCT_DETAIL_CACHE_TIMEOUT
-            - PRODUCT_DETAIL_CACHE_JITTER
+            PRODUCT_DETAIL_HARD_TIMEOUT
+            - PRODUCT_DETAIL_HARD_TIMEOUT_JITTER
         )
 
         maximum = (
-            PRODUCT_DETAIL_CACHE_TIMEOUT
-            + PRODUCT_DETAIL_CACHE_JITTER
+            PRODUCT_DETAIL_HARD_TIMEOUT
+            + PRODUCT_DETAIL_HARD_TIMEOUT_JITTER
         )
 
         # The TTL was set moments ago, so allow one second of
@@ -411,3 +416,107 @@ class ProductCacheTests(TestCase):
             ttl,
             maximum,
         )
+
+    # =========================================================
+    # Stale-While-Revalidate (Cache Breakdown / hot-key protection)
+    # =========================================================
+
+    def test_fresh_window_is_served_from_cache(self):
+        first = self.client.get(
+            self.product_url(),
+        )
+
+        self.assertEqual(
+            first.status_code,
+            200,
+        )
+
+        stored = cache.get(
+            product_detail_key(
+                product_id=self.product.id,
+            ),
+        )
+
+        # The cached entry is an SWR envelope whose fresh window is
+        # still open: data plus a future stale_at timestamp.
+        self.assertIn(
+            "data",
+            stored,
+        )
+
+        self.assertIn(
+            "stale_at",
+            stored,
+        )
+
+        self.assertGreater(
+            stored["stale_at"],
+            time.time(),
+        )
+
+        self.assertEqual(
+            stored["data"]["id"],
+            str(self.product.id),
+        )
+
+    def test_stale_entry_is_served_without_waiting(self):
+        # Force the fresh window shut: the envelope is now stale but
+        # still inside the hard TTL, and another worker holds the
+        # revalidation lock.
+        self.client.get(
+            self.product_url(),
+        )
+
+        key = product_detail_key(
+            product_id=self.product.id,
+        )
+
+        envelope = cache.get(key)
+
+        envelope["stale_at"] = time.time() - 1
+
+        cache.set(
+            key,
+            envelope,
+            timeout=300,
+        )
+
+        other_worker = RedisLock(
+            key=product_detail_lock_key(
+                product_id=self.product.id,
+            ),
+            timeout=10,
+        )
+
+        self.assertTrue(
+            other_worker.acquire(),
+        )
+
+        try:
+            with CaptureQueriesContext(
+                connection,
+            ) as queries:
+                response = self.client.get(
+                    self.product_url(),
+                )
+
+            self.assertEqual(
+                response.status_code,
+                200,
+            )
+
+            self.assertEqual(
+                response.data["data"]["id"],
+                str(self.product.id),
+            )
+
+            # Hot-key behavior: the stale value is served
+            # immediately; the request does not touch the DB and
+            # does not queue behind the revalidator.
+            self.assertEqual(
+                len(queries),
+                0,
+            )
+
+        finally:
+            other_worker.release()

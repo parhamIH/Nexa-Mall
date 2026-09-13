@@ -143,3 +143,206 @@ class AtomicCacheAside:
         # -------------------------
 
         return loader()
+
+
+class StaleWhileRevalidateCache:
+    """
+    Stale-while-revalidate cache for hot keys (breakdown protection).
+
+    Each entry carries two lifetimes:
+    - fresh (until stale_at): served immediately, no source access
+    - hard (the Redis TTL): after stale_at the previous value is
+      still served instantly while exactly one worker refreshes;
+      only past the hard TTL does the key really disappear
+
+    On a hot key this keeps latency flat: 10,000 concurrent requests
+    on a stale entry -> one worker reloads from the source, everyone
+    else gets the previous value immediately instead of queueing
+    behind the lock (plain single-flight would serialize them).
+
+    Suitable only for domains where a slightly old value is
+    business-acceptable (catalog content); never for
+    consistency-sensitive state (inventory, payments, order status).
+
+    set_loader_value=False: the loader publishes its own outcome
+    with domain-specific TTLs (e.g. a fresh/hard envelope or a raw
+    negative marker); this helper then only coordinates the
+    fresh/stale/lock flow.
+    """
+
+    RETRY_DELAY = 0.05
+    MAX_RETRIES = 100
+
+    def __init__(
+        self,
+        *,
+        key: str,
+        lock_key: str,
+        fresh_timeout: int,
+        hard_timeout: int,
+        lock_timeout: int = 10,
+        set_loader_value: bool = True,
+    ):
+        if fresh_timeout <= 0:
+            raise ValueError(
+                "fresh_timeout must be greater than zero."
+            )
+
+        if hard_timeout <= fresh_timeout:
+            raise ValueError(
+                "hard_timeout must be greater than "
+                "fresh_timeout."
+            )
+
+        self.key = key
+        self.lock_key = lock_key
+        self.fresh_timeout = fresh_timeout
+        self.hard_timeout = hard_timeout
+        self.lock_timeout = lock_timeout
+        self.set_loader_value = set_loader_value
+
+    def _build_envelope(
+        self,
+        data: Any,
+    ) -> dict:
+        return {
+            "data": data,
+            "stale_at": time.time()
+            + self.fresh_timeout,
+        }
+
+    def _get_envelope(self):
+        return cache.get(self.key)
+
+    def _is_envelope(
+        self,
+        value,
+    ) -> bool:
+        return (
+            isinstance(value, dict)
+            and "data" in value
+            and "stale_at" in value
+        )
+
+    def _is_stale(
+        self,
+        envelope: dict,
+    ) -> bool:
+        return time.time() >= envelope["stale_at"]
+
+    def _set(
+        self,
+        data,
+    ):
+        cache.set(
+            self.key,
+            self._build_envelope(data),
+            timeout=self.hard_timeout,
+        )
+
+    def get(
+        self,
+        loader: Callable[[], Any],
+    ):
+        # --------------------------------
+        # 1. Fast path
+        # --------------------------------
+
+        cached = self._get_envelope()
+
+        if cached is not None:
+            # Raw (non-envelope) values are legacy entries or
+            # negative markers: serve them as-is; their own TTL
+            # governs them.
+            if not self._is_envelope(cached):
+                return cached
+
+            if not self._is_stale(cached):
+                return cached["data"]
+
+        # --------------------------------
+        # 2. Cache is stale or missing
+        # --------------------------------
+
+        stale_data = None
+
+        if self._is_envelope(cached):
+            stale_data = cached["data"]
+
+        lock = RedisLock(
+            key=self.lock_key,
+            timeout=self.lock_timeout,
+        )
+
+        # --------------------------------
+        # 3. Try to become the revalidator
+        # --------------------------------
+
+        if lock.acquire():
+            try:
+                # ----------------------------
+                # Double check
+                # ----------------------------
+
+                cached = self._get_envelope()
+
+                if (
+                    self._is_envelope(cached)
+                    and not self._is_stale(cached)
+                ):
+                    return cached["data"]
+
+                # ----------------------------
+                # Refresh from the source
+                # ----------------------------
+
+                data = loader()
+
+                if data is None:
+                    return None
+
+                if self.set_loader_value:
+                    self._set(data)
+
+                return data
+
+            finally:
+                lock.release()
+
+        # --------------------------------
+        # 4. Another worker is refreshing
+        # --------------------------------
+
+        if stale_data is not None:
+            # Serve the previous value immediately instead of
+            # queueing behind the lock (hot-key behavior).
+            return stale_data
+
+        # --------------------------------
+        # 5. No stale value exists:
+        #    single-flight wait for the fill
+        # --------------------------------
+
+        for _ in range(
+            self.MAX_RETRIES,
+        ):
+            time.sleep(
+                self.RETRY_DELAY,
+            )
+
+            cached = self._get_envelope()
+
+            if cached is None:
+                continue
+
+            if not self._is_envelope(cached):
+                return cached
+
+            if not self._is_stale(cached):
+                return cached["data"]
+
+        # --------------------------------
+        # 6. Fail-open fallback
+        # --------------------------------
+
+        return loader()

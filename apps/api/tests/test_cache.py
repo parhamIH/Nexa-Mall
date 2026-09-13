@@ -4,7 +4,11 @@ import time
 from django.core.cache import cache
 from django.test import TestCase
 
-from apps.api.cache import AtomicCacheAside
+from apps.api.cache import (
+    AtomicCacheAside,
+    StaleWhileRevalidateCache,
+)
+from apps.api.locks import RedisLock
 from apps.api.redis import get_redis_client
 
 
@@ -232,5 +236,198 @@ class CacheStampedeTests(TestCase):
 
         self.assertEqual(
             loader_count,
+            1,
+        )
+
+
+class StaleWhileRevalidateCacheTests(TestCase):
+
+    def setUp(self):
+        cache.clear()
+
+    def test_fresh_value_is_returned_without_loader(self):
+        key = "nexa:test:swr:fresh"
+        lock_key = "nexa:test:swr:fresh:lock"
+
+        cache.set(
+            key,
+            {
+                "data": {
+                    "value": "cached",
+                },
+                "stale_at": time.time() + 60,
+            },
+            timeout=300,
+        )
+
+        cache_aside = StaleWhileRevalidateCache(
+            key=key,
+            lock_key=lock_key,
+            fresh_timeout=60,
+            hard_timeout=300,
+        )
+
+        def loader():
+            raise AssertionError(
+                "Loader must not run for fresh data."
+            )
+
+        result = cache_aside.get(
+            loader=loader,
+        )
+
+        self.assertEqual(
+            result,
+            {
+                "value": "cached",
+            },
+        )
+
+    def test_stale_value_can_be_returned(self):
+        key = "nexa:test:swr:stale"
+        lock_key = "nexa:test:swr:stale:lock"
+
+        cache.set(
+            key,
+            {
+                "data": {
+                    "value": "old",
+                },
+                "stale_at": time.time() - 1,
+            },
+            timeout=300,
+        )
+
+        # Simulate another worker currently refreshing.
+        other_worker = RedisLock(
+            key=lock_key,
+            timeout=10,
+        )
+
+        self.assertTrue(
+            other_worker.acquire(),
+        )
+
+        try:
+            cache_aside = StaleWhileRevalidateCache(
+                key=key,
+                lock_key=lock_key,
+                fresh_timeout=60,
+                hard_timeout=300,
+            )
+
+            result = cache_aside.get(
+                loader=lambda: {
+                    "value": "new",
+                },
+            )
+
+            self.assertEqual(
+                result,
+                {
+                    "value": "old",
+                },
+            )
+
+        finally:
+            other_worker.release()
+
+    def test_stale_value_is_refreshed_by_lock_owner(self):
+        key = "nexa:test:swr:refresh"
+        lock_key = "nexa:test:swr:refresh:lock"
+
+        cache.set(
+            key,
+            {
+                "data": {
+                    "value": "old",
+                },
+                "stale_at": time.time() - 1,
+            },
+            timeout=300,
+        )
+
+        cache_aside = StaleWhileRevalidateCache(
+            key=key,
+            lock_key=lock_key,
+            fresh_timeout=60,
+            hard_timeout=300,
+        )
+
+        result = cache_aside.get(
+            loader=lambda: {
+                "value": "new",
+            },
+        )
+
+        self.assertEqual(
+            result,
+            {
+                "value": "new",
+            },
+        )
+
+        stored = cache.get(key)
+
+        self.assertEqual(
+            stored["data"],
+            {
+                "value": "new",
+            },
+        )
+
+        self.assertGreater(
+            stored["stale_at"],
+            time.time(),
+        )
+
+    def test_hot_key_has_single_refresh(self):
+        key = "nexa:test:swr:hot"
+        lock_key = "nexa:test:swr:hot:lock"
+
+        cache.set(
+            key,
+            {
+                "data": {
+                    "value": "old",
+                },
+                "stale_at": time.time() - 1,
+            },
+            timeout=300,
+        )
+
+        loader_calls = 0
+
+        def loader():
+            nonlocal loader_calls
+
+            loader_calls += 1
+
+            time.sleep(0.1)
+
+            return {
+                "value": "new",
+            }
+
+        cache_aside = StaleWhileRevalidateCache(
+            key=key,
+            lock_key=lock_key,
+            fresh_timeout=60,
+            hard_timeout=300,
+        )
+
+        result = cache_aside.get(
+            loader=loader,
+        )
+
+        self.assertEqual(
+            result,
+            {
+                "value": "new",
+            },
+        )
+
+        self.assertEqual(
+            loader_calls,
             1,
         )
