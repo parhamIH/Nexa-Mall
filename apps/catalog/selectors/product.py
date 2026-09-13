@@ -66,6 +66,10 @@ class ProductSelector:
             .prefetch_related(
                 "categories",
                 "images",
+                # Consumed by ProductDetailSerializer's method
+                # fields: prefetch keeps the representation build
+                # query-free (no N+1 per SerializerMethodField).
+                "variants",
             )
             .order_by(
                 "-created_at",

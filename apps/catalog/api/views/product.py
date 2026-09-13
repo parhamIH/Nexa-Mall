@@ -9,11 +9,13 @@ from apps.api.responses import success_response
 from apps.catalog.api.filters import ProductFilter
 from apps.catalog.api.serializers import (
     ProductDetailResponseSerializer,
+    ProductDetailSerializer,
     ProductListResponseSerializer,
     ProductListSerializer,
     ProductManagementSerializer,
 )
 from apps.catalog.cache import (
+    PRODUCT_DETAIL_CACHE_VERSION,
     PRODUCT_DETAIL_FRESH_TIMEOUT,
     PRODUCT_DETAIL_HARD_TIMEOUT,
     PRODUCT_DETAIL_LOCK_TIMEOUT,
@@ -99,7 +101,11 @@ class ProductPublicViewSet(
     ):
         product_id = kwargs["pk"]
 
-        version = request.version or "v1"
+        # The cache version follows the REPRESENTATION (serializer
+        # shape), not the URL version: the cached value is the
+        # output of ProductDetailSerializer, so a serializer change
+        # bumps the key and old entries simply expire away.
+        version = PRODUCT_DETAIL_CACHE_VERSION
 
         cache_aside = StaleWhileRevalidateCache(
             key=product_detail_key(
@@ -141,8 +147,14 @@ class ProductPublicViewSet(
 
                 return PRODUCT_NOT_FOUND
 
-            data = self.get_serializer(
+            # The selector prefetched brand/categories/variants, so
+            # building this richer representation stays query-free
+            # even with SerializerMethodFields (no N+1).
+            data = ProductDetailSerializer(
                 product,
+                context={
+                    "request": request,
+                },
             ).data
 
             # Publish the SWR envelope (data + stale_at) with the

@@ -1,5 +1,6 @@
 from .product import (
     ProductDetailResponseSerializer,
+    ProductDetailSerializer,
     ProductListResponseSerializer,
     ProductListSerializer,
     ProductManagementSerializer,
@@ -10,4 +11,5 @@ __all__ = [
     "ProductManagementSerializer",
     "ProductListResponseSerializer",
     "ProductDetailResponseSerializer",
+    "ProductDetailSerializer",
 ]

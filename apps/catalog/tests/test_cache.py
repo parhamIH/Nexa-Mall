@@ -10,6 +10,7 @@ from rest_framework.test import APIClient
 from apps.api.locks import RedisLock
 from apps.api.redis import get_redis_client
 from apps.catalog.cache import (
+    PRODUCT_DETAIL_CACHE_VERSION,
     PRODUCT_DETAIL_HARD_TIMEOUT,
     PRODUCT_DETAIL_HARD_TIMEOUT_JITTER,
     PRODUCT_NOT_FOUND,
@@ -23,7 +24,11 @@ from apps.catalog.cache import (
     product_detail_key,
     product_detail_lock_key,
 )
-from apps.catalog.models import Product
+from apps.catalog.selectors.product import ProductSelector
+from apps.catalog.api.serializers import (
+    ProductDetailSerializer,
+)
+from apps.catalog.models import Product, ProductVariant
 from apps.tenants.models import Shop, Tenant
 
 
@@ -79,8 +84,9 @@ class ProductCacheTests(TestCase):
 
         self.assertIsNotNone(
             cache.get(
-                f"nexa:v1:catalog:"
-                f"product:detail:{self.product.id}"
+                product_detail_key(
+                    product_id=self.product.id,
+                )
             )
         )
 
@@ -128,8 +134,9 @@ class ProductCacheTests(TestCase):
 
         self.assertIsNotNone(
             cache.get(
-                f"nexa:v1:catalog:"
-                f"product:detail:{self.product.id}"
+                product_detail_key(
+                    product_id=self.product.id,
+                )
             )
         )
 
@@ -146,8 +153,9 @@ class ProductCacheTests(TestCase):
 
         self.assertIsNone(
             cache.get(
-                f"nexa:v1:catalog:"
-                f"product:detail:{self.product.id}"
+                product_detail_key(
+                    product_id=self.product.id,
+                )
             )
         )
 
@@ -159,7 +167,7 @@ class ProductCacheTests(TestCase):
         self.assertEqual(
             key,
             (
-                "nexa:v1:catalog:"
+                f"nexa:{PRODUCT_DETAIL_CACHE_VERSION}:catalog:"
                 f"product:detail:{self.product.id}"
             ),
         )
@@ -520,3 +528,134 @@ class ProductCacheTests(TestCase):
 
         finally:
             other_worker.release()
+
+    # =========================================================
+    # Serializer / Representation Cache
+    # =========================================================
+
+    def test_product_detail_serializer_does_not_create_n_plus_one_queries(self):
+        ProductVariant.objects.create(
+            product=self.product,
+            sku="CACHE-V1",
+            name="Black",
+            price=100000,
+            status=ProductVariant.Status.ACTIVE,
+        )
+
+        ProductVariant.objects.create(
+            product=self.product,
+            sku="CACHE-V2",
+            name="White",
+            price=120000,
+            status=ProductVariant.Status.ACTIVE,
+        )
+
+        # The real selector prefetches brand/categories/images/
+        # variants, so building the representation is query-free.
+        product = (
+            ProductSelector.public_products()
+            .filter(
+                id=self.product.id,
+            )
+            .first()
+        )
+
+        with CaptureQueriesContext(
+            connection,
+        ) as queries:
+            data = ProductDetailSerializer(
+                product,
+            ).data
+
+        self.assertEqual(
+            data["variant_count"],
+            2,
+        )
+
+        self.assertEqual(
+            str(data["min_variant_price"]),
+            "100000.00",
+        )
+
+        # SerializerMethodFields consumed prefetched data only:
+        # zero additional queries while serializing.
+        self.assertEqual(
+            len(queries),
+            0,
+        )
+
+    def test_serializer_cache_skips_serializer_and_database_on_hit(self):
+        cache.clear()
+
+        url = self.product_url()
+
+        # First request → MISS (DB + selector + serializer + SET)
+        first = self.client.get(url)
+
+        self.assertEqual(
+            first.status_code,
+            200,
+        )
+
+        # Second request → HIT (no serializer, no DB)
+        with CaptureQueriesContext(
+            connection,
+        ) as queries:
+            second = self.client.get(url)
+
+        self.assertEqual(
+            second.status_code,
+            200,
+        )
+
+        self.assertEqual(
+            len(queries),
+            0,
+        )
+
+        self.assertEqual(
+            first.data,
+            second.data,
+        )
+
+    def test_detail_response_contains_variant_representation(self):
+        ProductVariant.objects.create(
+            product=self.product,
+            sku="CACHE-DETAIL-1",
+            name="Black",
+            price=100000,
+            status=ProductVariant.Status.ACTIVE,
+        )
+
+        cache.clear()
+
+        response = self.client.get(
+            self.product_url(),
+        )
+
+        self.assertEqual(
+            response.status_code,
+            200,
+        )
+
+        data = response.data["data"]
+
+        self.assertEqual(
+            len(data["variants"]),
+            1,
+        )
+
+        self.assertEqual(
+            data["variants"][0]["sku"],
+            "CACHE-DETAIL-1",
+        )
+
+        self.assertEqual(
+            data["variant_count"],
+            1,
+        )
+
+        self.assertEqual(
+            str(data["min_variant_price"]),
+            "100000.00",
+        )

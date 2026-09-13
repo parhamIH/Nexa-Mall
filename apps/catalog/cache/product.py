@@ -4,7 +4,14 @@ import time
 from django.core.cache import cache
 
 
-PRODUCT_DETAIL_CACHE_VERSION = "v1"
+# Representation version, bumped whenever the serialized shape of
+# the cached payload changes (e.g. adding variant fields). The URL
+# API version and the cache representation version are separate
+# concerns: /api/v1/... may serve several representation versions
+# over time; bumping this constant migrates keys atomically
+# (nexa:v2:... never reads old nexa:v1:... entries, which die with
+# their TTL).
+PRODUCT_DETAIL_CACHE_VERSION = "v2"
 
 # Stale-while-revalidate (hot-key / breakdown protection):
 # - fresh: served instantly, no source access
