@@ -37,11 +37,18 @@ class AtomicCacheAside:
         lock_key: str,
         timeout: int,
         lock_timeout: int = 10,
+        set_loader_value: bool = True,
     ):
         self.key = key
         self.lock_key = lock_key
         self.timeout = timeout
         self.lock_timeout = lock_timeout
+
+        # When the loader returns a sentinel (e.g. a negative-cache
+        # marker that must be published with its own shorter TTL),
+        # the caller publishes it itself and this helper must not
+        # re-set it with the positive-data timeout.
+        self.set_loader_value = set_loader_value
 
     def get(
         self,
@@ -91,11 +98,12 @@ class AtomicCacheAside:
                 # 5. Publish for everyone else
                 # -------------------------
 
-                cache.set(
-                    self.key,
-                    value,
-                    timeout=self.timeout,
-                )
+                if self.set_loader_value:
+                    cache.set(
+                        self.key,
+                        value,
+                        timeout=self.timeout,
+                    )
 
                 return value
 

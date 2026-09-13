@@ -16,8 +16,12 @@ from apps.catalog.api.serializers import (
 from apps.catalog.cache import (
     PRODUCT_DETAIL_CACHE_TIMEOUT,
     PRODUCT_DETAIL_LOCK_TIMEOUT,
+    PRODUCT_NOT_FOUND,
+    get_product_detail,
     product_detail_key,
     product_detail_lock_key,
+    set_product_detail,
+    set_product_not_found,
 )
 from apps.catalog.selectors.product import ProductSelector
 from apps.catalog.services.product import ProductService
@@ -97,6 +101,25 @@ class ProductPublicViewSet(
 
         version = request.version or "v1"
 
+        # Fast path before taking any lock: a cached representation
+        # is served as-is; a cached NOT_FOUND marker is a negative
+        # cache hit and short-circuits to 404 without touching the
+        # database (cache penetration protection).
+        cached_data = get_product_detail(
+            product_id=product_id,
+            version=version,
+        )
+
+        if cached_data == PRODUCT_NOT_FOUND:
+            raise NotFound(
+                "Product not found.",
+            )
+
+        if cached_data is not None:
+            return success_response(
+                data=cached_data,
+            )
+
         cache_aside = AtomicCacheAside(
             key=product_detail_key(
                 product_id=product_id,
@@ -108,20 +131,50 @@ class ProductPublicViewSet(
             ),
             timeout=PRODUCT_DETAIL_CACHE_TIMEOUT,
             lock_timeout=PRODUCT_DETAIL_LOCK_TIMEOUT,
+            # The loader publishes both outcomes itself with the
+            # correct domain TTL (positive 300s, negative 60s); the
+            # helper only coordinates, it must not re-publish with
+            # its own single timeout.
+            set_loader_value=False,
         )
 
         def load_product():
-            product = self.get_object()
+            product = (
+                ProductSelector.public_products()
+                .filter(
+                    id=product_id,
+                )
+                .first()
+            )
 
-            return self.get_serializer(
+            if product is None:
+                # Publish the absence with the short negative TTL
+                # so repeated attacks on the same unknown id stop
+                # reaching the database.
+                set_product_not_found(
+                    product_id=product_id,
+                    version=version,
+                )
+
+                return PRODUCT_NOT_FOUND
+
+            data = self.get_serializer(
                 product,
             ).data
+
+            set_product_detail(
+                product_id=product.id,
+                data=data,
+                version=version,
+            )
+
+            return data
 
         data = cache_aside.get(
             loader=load_product,
         )
 
-        if data is None:
+        if data == PRODUCT_NOT_FOUND:
             raise NotFound(
                 "Product not found.",
             )

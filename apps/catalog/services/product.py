@@ -63,6 +63,14 @@ class ProductService:
 
         product.categories.set(categories)
 
+        # A brand-new id normally has no cache entry, but if a
+        # negative (not-found) marker was cached for this UUID
+        # earlier, it must go - otherwise the API would keep serving
+        # 404 for a product that now exists.
+        delete_product_detail(
+            product_id=product.id,
+        )
+
         return product
 
     @staticmethod

@@ -1,9 +1,15 @@
+import uuid
+
 from django.core.cache import cache
 from django.db import connection
 from django.test import TestCase
 from django.test.utils import CaptureQueriesContext
 from rest_framework.test import APIClient
 
+from apps.catalog.cache import (
+    PRODUCT_NOT_FOUND,
+    delete_product_detail,
+)
 from apps.catalog.cache import product_detail_key
 from apps.catalog.models import Product
 from apps.tenants.models import Shop, Tenant
@@ -221,4 +227,91 @@ class ProductCacheTests(TestCase):
             {
                 "name": "New Response",
             },
+        )
+
+    def test_not_found_product_is_negative_cached(self):
+        unknown_id = uuid.uuid4()
+
+        with CaptureQueriesContext(
+            connection,
+        ) as first_queries:
+            first = self.client.get(
+                f"/api/v1/catalog/products/"
+                f"{unknown_id}/",
+            )
+
+        self.assertEqual(
+            first.status_code,
+            404,
+        )
+
+        self.assertGreater(
+            len(first_queries),
+            0,
+        )
+
+        cached_value = cache.get(
+            product_detail_key(
+                product_id=unknown_id,
+            )
+        )
+
+        self.assertEqual(
+            cached_value,
+            PRODUCT_NOT_FOUND,
+        )
+
+    def test_negative_cache_prevents_repeated_db_queries(self):
+        unknown_id = uuid.uuid4()
+
+        first = self.client.get(
+            f"/api/v1/catalog/products/"
+            f"{unknown_id}/",
+        )
+
+        self.assertEqual(
+            first.status_code,
+            404,
+        )
+
+        with CaptureQueriesContext(
+            connection,
+        ) as second_queries:
+            second = self.client.get(
+                f"/api/v1/catalog/products/"
+                f"{unknown_id}/",
+            )
+
+        self.assertEqual(
+            second.status_code,
+            404,
+        )
+
+        self.assertEqual(
+            len(second_queries),
+            0,
+        )
+
+    def test_creating_product_invalidates_negative_cache(self):
+        key = product_detail_key(
+            product_id=self.product.id,
+        )
+
+        cache.set(
+            key,
+            PRODUCT_NOT_FOUND,
+            timeout=60,
+        )
+
+        self.assertEqual(
+            cache.get(key),
+            PRODUCT_NOT_FOUND,
+        )
+
+        delete_product_detail(
+            product_id=self.product.id,
+        )
+
+        self.assertIsNone(
+            cache.get(key),
         )
