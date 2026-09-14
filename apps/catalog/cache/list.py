@@ -17,7 +17,9 @@ PRODUCT_LIST_LOCK_TIMEOUT = 10
 # Old- and new-algorithm entries must never share a key - the same
 # ?search=nike could otherwise be served stale from the previous,
 # unranked representation.
-PRODUCT_LIST_CACHE_SCHEMA_VERSION = "v2"
+# v2: trigram-weighted ranked ordering
+# v3: full-text (tsvector/SearchRank) ordering + brand/SKU fallback
+PRODUCT_LIST_CACHE_SCHEMA_VERSION = "v3"
 
 # The list namespace version lives in a single, non-expiring key.
 # Bumping it invalidates EVERY list combination at once without

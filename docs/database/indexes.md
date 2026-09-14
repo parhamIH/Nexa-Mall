@@ -144,6 +144,63 @@ statistics with `ANALYZE` after bulk loads.
 
 ---
 
+## ADR-003 — Full-Text Search (tsvector GIN + SearchRank)
+
+**Decision:** token-based full-text search for the public product
+list, alongside the trigram path. `catalog.0006` adds a functional
+GIN index over the concatenated weighted document
+(`to_tsvector(simple, name) A + slug B + description D`) named
+`product_fts_search_idx`. The new `ProductFullTextSearchFilter`
+(frontend for the public endpoint) builds the same vector
+in-query, matches with `SearchQuery(search_type="websearch",
+config="simple")`, scores with `SearchRank` and orders by
+`-search_rank, -created_at, id`. Candidate paths via
+brand/`icontains` and variant SKU/name (`Exists`, no join
+duplication) keep the previous API find-contract intact.
+
+**Reason:** trigram answers "how similar is X to Y" (typo/partial
+matches); FTS answers "which documents contain these tokens" with
+per-field importance (A name > B slug > D description). `simple`
+config is a deliberate, predictable choice for a mixed
+EN/FA/SKU catalog — no stemming surprises; language-specific
+parsing is a future decision. `websearch_to_tsquery` never raises
+on user-style input (quotes, minus).
+
+**Rank is scaled to an INTEGER (`Cast(rank * 100000)`).** ts_rank
+returns `real` (float4, ~7 significant digits). DRF cursor
+pagination serializes the boundary position as `str(rank)` and
+then filters `rank < position`: the true float4 (0.675474584...)
+lies BELOW its shortest round-trip decimal (0.6754746), so the
+boundary row itself still passed the filter and the next page
+REPEATED it (verified by decoding the cursor and the generated
+SQL). Integer positions are exact, comparable and deterministic;
+sub-1e-5 rank differences collapse into ties broken by
+`-created_at, id`. Sub-1e-5 ranking differences are noise, not
+signal.
+
+**EXPLAIN ANALYZE evidence** (dev dataset): match+rank in one
+query; planner free to choose Seq Scan vs Bitmap Index Scan by
+cost (GIN exists ≠ GIN must be used — small tables legitimately
+stay on Seq Scan).
+
+**Rejected / deferred:**
+- Keeping trigram out — NO: both stay; they answer different
+  questions (similarity vs tokens); hybrid search is the next
+  step.
+- FTS vector over brand/variant columns (cross-table) — deferred
+  to the hybrid step; the single-table document keeps the GIN
+  expression index clean.
+- Rank threshold (e.g. `search_rank > 0.2`) — deferred until real
+  query/data distribution exists.
+- Elasticsearch/OpenSearch — still deferred (unchanged ADR-002).
+
+**Cache:** `PRODUCT_LIST_CACHE_SCHEMA_VERSION` bumped v2 → v3
+(the same `?search=nike` now yields a differently-ordered
+representation; old/new algorithm entries must never share a
+key).
+
+---
+
 ## Deliberately NOT built (yet) — and why
 
 | Candidate | Why deferred |

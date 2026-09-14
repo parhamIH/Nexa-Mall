@@ -108,10 +108,11 @@ class ProductListCacheKeyTests(TestCase):
         )
 
     def test_search_algorithm_version_changes_cache_key(self):
-        # Cache SCHEMA version (v2) is embedded in the key and is a
+        # Cache SCHEMA version is embedded in the key and is a
         # DIFFERENT axis from the API URL version: the same /api/v1/
-        # endpoint moved from the unranked (v1) to the ranked (v2)
-        # representation, and the two must never share cache keys.
+        # endpoint has moved from unranked (v1) to trigram-ranked (v2)
+        # to full-text-ranked (v3) representations, and they must never
+        # share cache keys.
         one = query_dict(search="nike")
 
         key = product_list_key(
@@ -120,7 +121,7 @@ class ProductListCacheKeyTests(TestCase):
         )
 
         self.assertIn(
-            ":v2:",
+            ":v3:",
             key,
         )
 

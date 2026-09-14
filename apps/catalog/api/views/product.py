@@ -14,6 +14,9 @@ from apps.api.pagination import (
 )
 from apps.api.responses import success_response
 from apps.catalog.api.filters import ProductFilter
+from apps.catalog.api.filters.full_text import (
+    ProductFullTextSearchFilter,
+)
 from apps.catalog.api.filters.search import (
     TrigramProductSearchFilter,
 )
@@ -69,7 +72,7 @@ class ProductPublicViewSet(
     # its own index + cursor-stability analysis per field.
     filter_backends = [
         DjangoFilterBackend,
-        TrigramProductSearchFilter,
+        ProductFullTextSearchFilter,
     ]
 
     filterset_class = ProductFilter
