@@ -14,11 +14,8 @@ from apps.api.pagination import (
 )
 from apps.api.responses import success_response
 from apps.catalog.api.filters import ProductFilter
-from apps.catalog.api.filters.full_text import (
-    ProductFullTextSearchFilter,
-)
-from apps.catalog.api.filters.search import (
-    TrigramProductSearchFilter,
+from apps.catalog.api.filters.hybrid_search import (
+    HybridProductSearchFilter,
 )
 from apps.catalog.api.serializers import (
     ProductCursorListResponseSerializer,
@@ -72,7 +69,7 @@ class ProductPublicViewSet(
     # its own index + cursor-stability analysis per field.
     filter_backends = [
         DjangoFilterBackend,
-        ProductFullTextSearchFilter,
+        HybridProductSearchFilter,
     ]
 
     filterset_class = ProductFilter

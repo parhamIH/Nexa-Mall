@@ -101,6 +101,14 @@ class SearchAwareCursorPagination(StandardCursorPagination):
             {},
         )
 
+        if "search_score" in annotations:
+            # Hybrid weighted-sum search ranking.
+            return [
+                "-search_score",
+                "-created_at",
+                "id",
+            ]
+
         if "search_rank" in annotations:
             # Full-text search ranking (SearchRank).
             return [

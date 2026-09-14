@@ -103,7 +103,7 @@ class Product(models.Model):
             # Full-Text Search: a token-based (tsvector) GIN over a
             # weighted concat of name (A) / slug (B) / description
             # (D). The expression MUST exactly match the SearchVector
-            # built by ProductFullTextSearchFilter - same fields,
+            # built by HybridProductSearchFilter - same fields,
             # weights and config - or the planner can never use it.
             # config="simple": predictable tokenization for a mixed
             # English/Persian/SKU catalog (no language-specific

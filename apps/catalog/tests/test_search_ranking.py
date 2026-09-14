@@ -170,8 +170,8 @@ class ProductSearchRankingTests(TestCase):
         from rest_framework.request import Request
         from rest_framework.test import APIRequestFactory
 
-        from apps.catalog.api.filters.search import (
-            TrigramProductSearchFilter,
+        from apps.catalog.api.filters.hybrid_search import (
+            HybridProductSearchFilter,
         )
 
         factory = APIRequestFactory()
@@ -189,7 +189,7 @@ class ProductSearchRankingTests(TestCase):
             status=Product.Status.ACTIVE,
         )
 
-        backend = TrigramProductSearchFilter()
+        backend = HybridProductSearchFilter()
 
         queryset = backend.filter_queryset(
             request,
@@ -211,7 +211,7 @@ class ProductSearchRankingTests(TestCase):
         )
 
         self.assertTrue(
-            "search_relevance"
+            "search_score"
             in queryset.query.annotations,
         )
 

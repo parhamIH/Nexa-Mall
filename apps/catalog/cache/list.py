@@ -19,7 +19,8 @@ PRODUCT_LIST_LOCK_TIMEOUT = 10
 # unranked representation.
 # v2: trigram-weighted ranked ordering
 # v3: full-text (tsvector/SearchRank) ordering + brand/SKU fallback
-PRODUCT_LIST_CACHE_SCHEMA_VERSION = "v3"
+# v4: hybrid weighted-sum (exact + trigram + FTS + brand + SKU)
+PRODUCT_LIST_CACHE_SCHEMA_VERSION = "v4"
 
 # The list namespace version lives in a single, non-expiring key.
 # Bumping it invalidates EVERY list combination at once without

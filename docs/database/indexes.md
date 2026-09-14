@@ -201,6 +201,48 @@ key).
 
 ---
 
+## ADR-004 — Hybrid Weighted-Sum Search
+
+**Decision:** `HybridProductSearchFilter` replaces the previous
+standalone trigram and FTS filters as the public search frontend
+(both files removed; their knowledge lives on in git history and
+in the hybrid). Candidates come from ANY signal (FTS tsvector
+match against `product_fts_search_idx`, name/slug/description
+icontains, brand icontains, variant SKU/name icontains); ranking
+is a **weighted sum**, not Greatest — each channel contributes
+its share so a product strong in two channels outranks one
+strong in a single channel:
+
+    exact name +10.0 | name trigram 4.0x | best-variant SKU 8.0x
+    brand 5.0x | FTS rank 3.0x | description trigram 1.0x
+
+Max() over variants: a product with many weak variants cannot
+farm an artificial boost — the BEST variant represents it.
+Weights are initial ranking constants (a business rule to tune
+with real search-quality data, not a technical constant).
+
+**Score is Cast(x * 100000, IntegerField()) from day one** — the
+float4 cursor bug documented in ADR-003 is a class of bug, not a
+one-off: ANY float annotation used as a cursor position must be
+integer-scaled. Verified live: scores `Nike Air 1699757 /
+Nike Air Max 576660 / Running Shoes 72588`, disjoint cursor
+pages, and the full weighted-sum computed in a single SQL query.
+
+**Rejected / deferred:**
+- Greatest() per-channel-max (previous model) — loses
+  multi-channel strength information.
+- Cross-table FTS vector (brand/variant columns inside the
+  tsvector) — deferred; would complicate the GIN expression
+  index; the sum model already gives brand/SKU their own votes.
+- Rank/score threshold — deferred until real query distribution.
+- Elasticsearch/OpenSearch — unchanged (ADR-002/003).
+
+**Cache:** `PRODUCT_LIST_CACHE_SCHEMA_VERSION` bumped v3 → v4
+(hybrid ordering differs from FTS-only ordering for the same
+`?search=`; representations must not share keys).
+
+---
+
 ## Deliberately NOT built (yet) — and why
 
 | Candidate | Why deferred |
