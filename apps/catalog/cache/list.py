@@ -20,7 +20,10 @@ PRODUCT_LIST_LOCK_TIMEOUT = 10
 # v2: trigram-weighted ranked ordering
 # v3: full-text (tsvector/SearchRank) ordering + brand/SKU fallback
 # v4: hybrid weighted-sum (exact + trigram + FTS + brand + SKU)
-PRODUCT_LIST_CACHE_SCHEMA_VERSION = "v4"
+# v5: hybrid + typo-tolerant trigram CANDIDATE branch (same ?search=
+#     now returns results a token/substring-only candidate filter
+#     would have missed entirely)
+PRODUCT_LIST_CACHE_SCHEMA_VERSION = "v5"
 
 # The list namespace version lives in a single, non-expiring key.
 # Bumping it invalidates EVERY list combination at once without

@@ -13,7 +13,11 @@ from django.db.models import (
     Value,
     When,
 )
-from django.db.models.functions import Cast, Coalesce
+from django.db.models.functions import (
+    Cast,
+    Coalesce,
+    Upper,
+)
 from rest_framework import filters
 from rest_framework.settings import api_settings
 
@@ -31,7 +35,11 @@ class HybridProductSearchFilter(
     filters.BaseFilterBackend,
 ):
     """Weighted-sum hybrid search: candidates from any signal, ranked
-    by a combined score.
+    by a combined score. Candidates come from token (FTS) matches,
+    substring (icontains) matches OR name-trigram similarity, so a
+    typo'd query ("nike air mx") still retrieves something to rank -
+    trigram similarity is not left ranking-only, where a query no
+    token/substring path matches would retrieve NOTHING.
 
     Unifies the two engines built in the previous chapters:
     - FTS (tsvector GIN + SearchRank): "which documents contain
@@ -61,6 +69,15 @@ class HybridProductSearchFilter(
     BRAND_WEIGHT = 5.0
     FTS_WEIGHT = 3.0
     DESCRIPTION_WEIGHT = 1.0
+
+    # Candidate-generation threshold for the name trigram channel.
+    # Measured on the dev catalog: the typo target ("nike air mx" vs
+    # "Nike Air Max") scores 0.667 while the nearest unrelated
+    # product sits at 0.286. The candidate branch uses the indexable
+    # `%` operator (trigram_similar), whose cut-off is pg_trgm's
+    # pg_trgm.similarity_threshold GUC (default 0.3, exactly between
+    # the measured target and noise). Tune with real query logs, not
+    # guesses.
 
     fts_vector = (
         SearchVector(
@@ -199,6 +216,16 @@ class HybridProductSearchFilter(
             # match on it (and so the predicate expression is identical
             # to the product_fts_search_idx GIN index expression).
             search_vector=search_vector,
+            # Typo-tolerance candidate channel. The `%` operator must
+            # be applied to the SAME expression the functional GIN
+            # index is built on (upper(name) gin_trgm_ops): verified
+            # Bitmap Index Scan on product_name_trgm_idx. A per-row
+            # `similarity >= t` predicate is NOT indexable and, inside
+            # this OR, would drag the whole filter back to a seq scan
+            # over the catalog - losing the GIN paths of every OTHER
+            # branch too. similarity() lowercases its trigrams, so
+            # UPPER(name) % raw query matches case-insensitively.
+            search_name_upper=Upper("name"),
             search_score=Cast(
                 final_score * SCORE_SCALE,
                 IntegerField(),
@@ -220,6 +247,15 @@ class HybridProductSearchFilter(
             )
             | Q(
                 brand__name__icontains=search,
+            )
+            # Typo-tolerant retrieval: a name trigram-similar to the
+            # (possibly mistyped) query becomes a candidate even when
+            # no token or substring path matches it. Cut-off = the
+            # pg_trgm.similarity_threshold GUC (0.3 by default).
+            | Q(
+                search_name_upper__trigram_similar=(
+                    search
+                ),
             )
             | variant_match,
         )

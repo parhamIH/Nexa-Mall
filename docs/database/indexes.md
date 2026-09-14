@@ -241,6 +241,50 @@ pages, and the full weighted-sum computed in a single SQL query.
 (hybrid ordering differs from FTS-only ordering for the same
 `?search=`; representations must not share keys).
 
+**Addendum — typo-tolerant candidates (v5):** the first cut of the
+hybrid used trigram similarity ONLY in the ranking, so a typo'd
+query ("nike air mx" — no FTS token, no substring) retrieved ZERO
+candidates and the ranking had nothing to rank: the quality test
+suite caught it as retrieval-vs-ranking separation. Fix: a
+trigram candidate branch via the indexable `%` operator applied to
+the same expression the functional GIN index is built on
+(`Upper(name) % query` → verified Bitmap Index Scan on
+`product_name_trgm_idx`). A per-row `similarity >= t` predicate was
+measured and REJECTED: it is not indexable and inside this OR would
+drag every other branch's GIN path down to a seq scan. Cut-off is
+pg_trgm's `pg_trgm.similarity_threshold` GUC (default 0.3, exactly
+between the measured target 0.667 and nearest noise 0.286);
+similarity() lowercases its trigrams, so UPPER(name) matches
+case-insensitively. Cache schema bumped v4 → v5.
+
+**Baseline v1 (dev catalog, `python manage.py search_benchmark`):**
+
+    Precision@5 = 0.7167
+    Recall@5    = 0.9167
+    MRR         = 0.7833
+
+Per-query (P@5 / R@5 / RR) — the weak queries and their causes:
+
+    nike air max   1.0  1.0  1.0   exact-name boost dominates ✓
+    black shoes    1.0  1.0  1.0   ✓
+    air max        1.0  1.0  1.0   ✓
+    nike           0.6  1.0  0.5   court-sneaker ("Nike-inspired"
+                                  description, weight 1.0) outranks
+                                  the four real Nikes, which tie at
+                                  0.6 and are broken by -created_at
+                                  (recently-seeded noise models win)
+    nike air       0.5  1.0  1.0   nike-shirt rides the Nike brand
+                                  boost (multi-signal sum, correct
+                                  mechanics, but seed data has no
+                                  brand on shirt)
+    running shoes  0.2  0.5  0.2   dev catalog contains 8 FTS-chapter
+                                  noise models with "Running
+                                  footwear" descriptions
+
+These numbers are the baseline the weight-tuning chapter must BEAT
+with measurements, not guesses. The dev catalog is intentionally
+noisy - production metrics need a real catalog and real query logs.
+
 ---
 
 ## Deliberately NOT built (yet) — and why

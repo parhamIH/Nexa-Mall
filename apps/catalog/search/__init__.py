@@ -1,3 +1,4 @@
+from .adapter import HybridSearchAdapter
 from .benchmark import (
     SearchBenchmarkResult,
     run_search_benchmark,
@@ -14,6 +15,7 @@ from .evaluation_dataset import (
 )
 
 __all__ = [
+    "HybridSearchAdapter",
     "precision_at_k",
     "recall_at_k",
     "reciprocal_rank",
