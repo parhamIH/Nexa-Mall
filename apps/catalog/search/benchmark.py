@@ -3,6 +3,7 @@ from typing import Callable
 
 from .evaluation import (
     mean_reciprocal_rank,
+    ndcg_at_k,
     precision_at_k,
     recall_at_k,
 )
@@ -23,53 +24,81 @@ BENCHMARK_K = 5
 
 @dataclass(frozen=True)
 class SearchBenchmarkResult:
+    """
+    Quality result over the (single, graded) evaluation dataset.
+
+    The BINARY trio answers "did we find the relevant items?":
+      - precision_at_5: of what we SHOWED, how much was relevant
+      - recall_at_5:    of everything relevant, how much we FOUND
+      - mrr:            how close to the top the first relevant item lands
+
+    NDCG@5 is the RANKING metric the trio cannot see: an engine that
+    returns every relevant item in the WORST order still scores
+    perfectly on recall, but NDCG@5 punishes exactly that ordering.
+    It is the headline ranking-quality number for the marketplace.
+    """
     precision_at_5: float
     recall_at_5: float
     mrr: float
+    ndcg_at_5: float
 
 
 def run_search_benchmark(
     search: SearchFunction,
+    k: int = BENCHMARK_K,
 ) -> SearchBenchmarkResult:
     """
     Run the evaluation dataset through `search` and aggregate the
-    three metrics.
+    four metrics (macro average: every query weighs equally, which
+    suits a small dataset - no single query dominates).
 
-    Precision@5 / Recall@5 are MACRO averaged (per query, then mean
-    across queries): every query weighs equally, which suits a
-    small dataset; no query dominates the benchmark.
+    The dataset is fully GRADED (slug -> relevance grade) since the
+    NDCG chapter: the binary metrics derive their relevance sets
+    from the grades (grade > 0 counts as relevant), and NDCG@K
+    consumes the raw grades. One dataset, one source of truth.
+
+    Queries with an EMPTY relevant set are coverage-matrix rows
+    (e.g. the deliberate no-result query): they declare no relevance
+    judgments, so they have nothing to measure - a ranking metric
+    against an empty judgment set would be either meaningless or an
+    unfair 0.0 tax on a correct empty result. Their behavior is
+    asserted behaviorally in test_search_query_coverage.py instead
+    of counted here.
 
     Deliberately no pass/fail thresholds here: thresholds belong to
     regression tests and only AFTER a real, validated baseline
-    exists - locking numbers in early invites tuning the data to
-    the test instead of the test protecting the quality.
+    exists (30+ real queries) - locking numbers in early invites
+    tuning the data to the test instead of the test protecting the
+    quality.
     """
     retrieved_results: list[list[str]] = []
     relevant_sets: list[set[str]] = []
 
     precision_scores: list[float] = []
     recall_scores: list[float] = []
+    ndcg_scores: list[float] = []
 
     for case in SEARCH_EVALUATION_DATASET:
+        relevant = set(case.relevant_slugs)
+
+        if not relevant:
+            continue
+
         retrieved = search(case.query)
 
         retrieved_results.append(retrieved)
-        relevant_sets.append(set(case.relevant))
+        relevant_sets.append(relevant)
 
         precision_scores.append(
-            precision_at_k(
-                retrieved,
-                set(case.relevant),
-                BENCHMARK_K,
-            )
+            precision_at_k(retrieved, relevant, k)
         )
 
         recall_scores.append(
-            recall_at_k(
-                retrieved,
-                set(case.relevant),
-                BENCHMARK_K,
-            )
+            recall_at_k(retrieved, relevant, k)
+        )
+
+        ndcg_scores.append(
+            ndcg_at_k(retrieved, grades=case.grades, k=k)
         )
 
     precision_at_5 = (
@@ -84,6 +113,12 @@ def run_search_benchmark(
         else 0.0
     )
 
+    ndcg_at_5 = (
+        sum(ndcg_scores) / len(ndcg_scores)
+        if ndcg_scores
+        else 0.0
+    )
+
     mrr = mean_reciprocal_rank(
         retrieved_results,
         relevant_sets,
@@ -93,4 +128,5 @@ def run_search_benchmark(
         precision_at_5=precision_at_5,
         recall_at_5=recall_at_5,
         mrr=mrr,
+        ndcg_at_5=ndcg_at_5,
     )

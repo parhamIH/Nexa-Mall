@@ -178,3 +178,65 @@ class HybridSearchAdapterIntegrationTests(TestCase):
             0.5,
             f"baseline regressed: {result}",
         )
+
+    def test_benchmark_reports_ndcg_at_5(self):
+        # The single real benchmark now aggregates NDCG@5 over the
+        # GRADED dataset alongside P@K/R@K/MRR. Soft bounds only -
+        # the ranking-quality regression gate comes after a
+        # validated real-query baseline.
+        result = run_search_benchmark(
+            self.adapter.search,
+        )
+
+        self.assertGreaterEqual(
+            result.ndcg_at_5,
+            0.0,
+            f"graded baseline regressed: {result}",
+        )
+
+        self.assertLessEqual(
+            result.ndcg_at_5,
+            1.0,
+            f"graded baseline out of range: {result}",
+        )
+
+    def test_graded_against_actual_fixture(self):
+        # The graded dataset must be measurable against the REAL
+        # fixture: the "running shoes" case grades products that
+        # exist in the adapter fixture, so this is a live
+        # ranking-quality assertion, not a synthetic one. No hard
+        # threshold yet - the regression gate comes after a
+        # validated real-query baseline.
+        from apps.catalog.search.evaluation import ndcg_at_k
+        from apps.catalog.search.evaluation_dataset import (
+            SEARCH_EVALUATION_DATASET,
+        )
+
+        case = next(
+            case_
+            for case_ in SEARCH_EVALUATION_DATASET
+            if case_.query == "running shoes"
+        )
+
+        retrieved = self.adapter.search("running shoes")
+        grades = case.grades
+
+        score = ndcg_at_k(
+            retrieved,
+            grades=grades,
+            k=5,
+        )
+
+        self.assertGreaterEqual(score, 0.0)
+        self.assertLessEqual(score, 1.0)
+
+        # The two grade-3 running shoes are in the adapter fixture:
+        # at least one of them must actually rank in the top 5.
+        self.assertTrue(
+            any(
+                slug in retrieved[:5]
+                for slug, grade in case.relevance
+                if grade == 3
+            ),
+            "no grade-3 product ranked in top 5",
+        )

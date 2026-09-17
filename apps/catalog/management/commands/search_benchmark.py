@@ -37,4 +37,8 @@ class Command(BaseCommand):
             f"MRR         : {result.mrr:.4f}"
         )
 
+        self.stdout.write(
+            f"NDCG@5      : {result.ndcg_at_5:.4f}"
+        )
+
         self.stdout.write("")

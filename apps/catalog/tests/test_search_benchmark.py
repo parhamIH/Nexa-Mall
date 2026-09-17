@@ -50,14 +50,21 @@ class SearchBenchmarkTests(SimpleTestCase):
         self.assertGreater(result.precision_at_5, 0)
         self.assertGreater(result.recall_at_5, 0)
         self.assertGreater(result.mrr, 0)
+        # The fake search ranks the graded top items first in most
+        # queries; NDCG@5 must be a valid ratio, never NaN.
+        self.assertGreater(result.ndcg_at_5, 0)
 
         self.assertLessEqual(result.precision_at_5, 1)
         self.assertLessEqual(result.recall_at_5, 1)
         self.assertLessEqual(result.mrr, 1)
+        self.assertLessEqual(result.ndcg_at_5, 1)
 
     def test_benchmark_with_perfect_search(self):
-        # A search returning exactly the relevant set, best result
-        # first, for every query: the benchmark must top out.
+        # A search returning exactly the RELEVANT items (grade > 0),
+        # best result first, for every query: the benchmark must top
+        # out on every metric including NDCG@5. Grade-0 judgments
+        # stay out of the answer - the engine must not surface what
+        # was judged explicitly irrelevant.
         from apps.catalog.search.evaluation_dataset import (
             SEARCH_EVALUATION_DATASET,
         )
@@ -65,7 +72,15 @@ class SearchBenchmarkTests(SimpleTestCase):
         def perfect_search(query: str) -> list[str]:
             for case in SEARCH_EVALUATION_DATASET:
                 if case.query == query:
-                    return list(case.relevant)
+                    return [
+                        slug
+                        for slug, grade in sorted(
+                            case.relevance,
+                            key=lambda item: item[1],
+                            reverse=True,
+                        )
+                        if grade > 0
+                    ]
 
             return []
 
@@ -74,13 +89,50 @@ class SearchBenchmarkTests(SimpleTestCase):
         self.assertEqual(result.precision_at_5, 1.0)
         self.assertEqual(result.recall_at_5, 1.0)
         self.assertEqual(result.mrr, 1.0)
+        self.assertEqual(result.ndcg_at_5, 1.0)
+
+    def test_benchmark_with_reversed_graded_search(self):
+        # The SAME relevant items (grade > 0) in the WORST order:
+        # binary metrics stay perfect, NDCG@5 must punish the
+        # ordering - this is exactly the blindness the graded metric
+        # fixes.
+        from apps.catalog.search.evaluation_dataset import (
+            SEARCH_EVALUATION_DATASET,
+        )
+
+        def reversed_search(query: str) -> list[str]:
+            for case in SEARCH_EVALUATION_DATASET:
+                if case.query == query:
+                    return [
+                        slug
+                        for slug, grade in sorted(
+                            case.relevance,
+                            key=lambda item: item[1],
+                            reverse=False,
+                        )
+                        if grade > 0
+                    ]
+
+            return []
+
+        result = run_search_benchmark(reversed_search)
+
+        self.assertEqual(result.precision_at_5, 1.0)
+        self.assertEqual(result.recall_at_5, 1.0)
+        self.assertEqual(result.mrr, 1.0)
+
+        self.assertLess(result.ndcg_at_5, 1.0)
+        self.assertGreater(result.ndcg_at_5, 0.0)
 
     def test_benchmark_with_useless_search(self):
         # Nothing relevant ever retrieved: all metrics bottom out.
+        # The fake noise must be COMPLETELY unjudged - a slug with a
+        # grade anywhere in the dataset would lift NDCG above zero
+        # for that query.
         def useless_search(query: str) -> list[str]:
             return [
-                "adidas-shoe",
-                "puma-socks",
+                "totally-unrelated",
+                "also-unrelated",
             ]
 
         result = run_search_benchmark(useless_search)
@@ -88,3 +140,26 @@ class SearchBenchmarkTests(SimpleTestCase):
         self.assertEqual(result.precision_at_5, 0.0)
         self.assertEqual(result.recall_at_5, 0.0)
         self.assertEqual(result.mrr, 0.0)
+        self.assertEqual(result.ndcg_at_5, 0.0)
+
+    def test_benchmark_skips_empty_relevance_cases(self):
+        # The deliberate no-result query declares no judgments; the
+        # benchmark must skip it rather than tax it or crash.
+        from apps.catalog.search.evaluation_dataset import (
+            SEARCH_EVALUATION_DATASET,
+        )
+
+        calls: list[str] = []
+
+        def recording_search(query: str) -> list[str]:
+            calls.append(query)
+            return []
+
+        run_search_benchmark(recording_search)
+
+        self.assertNotIn("xyzabc123", calls)
+
+        # Every non-skipped case was actually searched.
+        for case in SEARCH_EVALUATION_DATASET:
+            if case.relevant_slugs:
+                self.assertIn(case.query, calls)
