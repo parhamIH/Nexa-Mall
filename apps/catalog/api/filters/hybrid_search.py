@@ -63,12 +63,7 @@ class HybridProductSearchFilter(
 
     search_param = api_settings.SEARCH_PARAM
 
-    NAME_EXACT_WEIGHT = 10.0
-    NAME_TRIGRAM_WEIGHT = 4.0
-    SKU_WEIGHT = 8.0
-    BRAND_WEIGHT = 5.0
-    FTS_WEIGHT = 3.0
-    DESCRIPTION_WEIGHT = 1.0
+    # Weights are now sourced from self.weights
 
     # Candidate-generation threshold for the name trigram channel.
     # Measured on the dev catalog: the typo target ("nike air mx" vs
@@ -174,7 +169,7 @@ class HybridProductSearchFilter(
             When(
                 name__iexact=search,
                 then=Value(
-                    self.NAME_EXACT_WEIGHT,
+                    self.weights.exact_name,
                 ),
             ),
             default=Value(0.0),
@@ -185,7 +180,7 @@ class HybridProductSearchFilter(
             exact_name_boost
             + name_similarity
             * Value(
-                self.NAME_TRIGRAM_WEIGHT,
+                self.weights.name_trigram,
             )
             + variant_sku_similarity
             * Value(
@@ -193,15 +188,15 @@ class HybridProductSearchFilter(
             )
             + brand_similarity
             * Value(
-                self.BRAND_WEIGHT,
+                self.weights.brand,
             )
             + fts_rank
             * Value(
-                self.FTS_WEIGHT,
+                self.weights.full_text,
             )
             + description_similarity
             * Value(
-                self.DESCRIPTION_WEIGHT,
+                self.weights.description,
             )
         )
 
