@@ -1,4 +1,4 @@
-from collections.abc import Iterable, Mapping
+from collections.abc import Iterable
 from math import log2
 
 
@@ -128,23 +128,20 @@ def mean_reciprocal_rank(
     return sum(reciprocal_ranks) / len(reciprocal_ranks)
 
 
-def _exponential_gain(relevance: float) -> float:
-    """Marketplace relevance gain: 2**rel - 1 (gain 3 -> 7, 2 -> 3,
-    1 -> 1, 0 -> 0). The gap between grades grows exponentially, so
-    ranking a perfect match above a merely relevant item matters far
-    more than ordering two marginally relevant items."""
-    return 2 ** relevance - 1
-
-
 def dcg_at_k(
     relevance_scores: Iterable[float],
     k: int,
 ) -> float:
     """
-    Discounted Cumulative Gain at K with EXPONENTIAL gain: the
-    graded relevance accumulated in the top K, discounted by rank.
+    Calculate Discounted Cumulative Gain at K using EXPONENTIAL
+    gain (section 3):
 
         DCG@K = Σ (2**rel_i - 1) / log2(i + 1)
+
+    Exponential gain is the marketplace model: the jump from
+    "relevant" (2) to "exactly what I wanted" (3) must weigh far
+    more than the jump from "weakly relevant" (1) to "relevant" (2):
+        gain(3) = 7, gain(2) = 3, gain(1) = 1, gain(0) = 0
 
     Rank discount: rank 1 is undiscounted (log2(2) = 1), rank 2
     -> /1.58, rank 4 -> /2.32... A highly relevant result buried at
@@ -160,7 +157,10 @@ def dcg_at_k(
         return 0.0
 
     return sum(
-        _exponential_gain(relevance) / log2(position + 1)
+        (
+            (2 ** relevance - 1)
+            / log2(position + 1)
+        )
         for position, relevance in enumerate(
             scores,
             start=1,
@@ -168,89 +168,59 @@ def dcg_at_k(
     )
 
 
-def idcg_at_k(
-    grades: Mapping[str, float],
-    k: int,
-) -> float:
-    """
-    Ideal DCG at K: the best possible DCG for this graded judgment
-    set - the gains sorted by descending relevance, discounted by
-    rank. The ceiling the retrieved ranking is measured against.
-    """
-    sorted_grades = sorted(
-        grades.values(),
-        reverse=True,
-    )[:k]
-
-    return sum(
-        _exponential_gain(gain) / log2(position + 1)
-        for position, gain in enumerate(
-            sorted_grades,
-            start=1,
-        )
-    )
-
-
 def ndcg_at_k(
-    retrieved: Iterable[str],
-    grades: Mapping[str, float] | None = None,
-    k: int = 5,
+    relevance_scores: Iterable[float],
     ideal_relevance_scores: Iterable[float] | None = None,
+    k: int = 5,
 ) -> float:
     """
-    Normalized DCG at K: how close the retrieved ranking comes to
-    the ideal one, as a fraction in [0, 1].
+    Calculate Normalized Discounted Cumulative Gain at K.
 
-    NDCG = DCG@K / IDCG@K. It is scale-free and position-aware -
-    the metric the binary P@K/R@K/MRR trio cannot see. 1.0 means
-    the perfect ordering (all relevant results, best first); 0.0
-    means nothing relevant retrieved.
+    NDCG = DCG@K / IDCG@K, a fraction in [0, 1]: how close the
+    retrieved ranking comes to the ideal one. It is scale-free,
+    position-aware, and normalized - the metric the binary
+    P@K/R@K/MRR trio cannot see (section 1 / section 10):
+      1.0 = perfect ranking (all relevant, best first)
+      0.0 = nothing relevant retrieved
 
-    Two calling conventions, exactly like the chapter describes:
+    The IDEAL must include ALL relevant grades, not just the ones
+    the search found (section 4): if the ground truth is
+    [3, 3, 2, 1] but search only found A and D, the ideal is
+    [3, 3, 2, 1], NOT [3, 1] - otherwise NDCG would ignore the
+    relevant items the engine MISSED. Only comparing against the
+    full ideal makes NDCG reflect both ranking quality AND
+    relevant-item loss.
 
-    1. Retrieved SLUGS + a graded relevance MAP:
-           ndcg_at_k(["a", "b"], {"a": 3, "b": 1}, k=5)
-       Missing slugs are irrelevant (grade 0). The ideal ordering
-       is derived from the map's own grades - the dataset IS the
-       ground truth.
-
-    2. Raw relevance SCORES, with an optional explicit ideal:
-           ndcg_at_k([0, 2, 3, 3], k=4)
-           ndcg_at_k([0, 2, 3], [3, 3, 2], k=5)
-       When ideal_relevance_scores is None the ideal is the scores
-       sorted descending (the best possible self-ordering); when
-       given, an externally defined ground-truth ordering wins.
+    `ideal_relevance_scores` is optional for convenience (section
+    8 of the NDCG chapter): when omitted, the ideal is the actual
+    scores sorted descending - the best possible self-ordering.
+    When supplied, an externally defined ground-truth ordering
+    wins, which is what the benchmark passes.
     """
     if k <= 0:
         return 0.0
 
-    if grades is not None:
-        # Convention 1: retrieved items -> relevance via the map.
-        scores = [
-            grades.get(item, 0.0)
-            for item in retrieved
-        ][:k]
+    actual = list(relevance_scores)[:k]
 
-        ideal_scores = sorted(
-            grades.values(),
+    if ideal_relevance_scores is None:
+        ideal = sorted(
+            actual,
             reverse=True,
         )[:k]
     else:
-        # Convention 2: raw relevance scores.
-        scores = list(retrieved)[:k]
+        ideal = list(
+            ideal_relevance_scores
+        )[:k]
 
-        if ideal_relevance_scores is None:
-            ideal_scores = sorted(
-                scores,
-                reverse=True,
-            )[:k]
-        else:
-            ideal_scores = list(
-                ideal_relevance_scores
-            )[:k]
+    dcg = dcg_at_k(
+        actual,
+        k,
+    )
 
-    dcg = dcg_at_k(scores, k)
-    idcg = dcg_at_k(ideal_scores, k)
+    idcg = dcg_at_k(
+        ideal,
+        k,
+    )
 
     if idcg == 0:
         return 0.0

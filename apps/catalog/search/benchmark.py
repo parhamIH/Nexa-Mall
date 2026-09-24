@@ -19,8 +19,6 @@ from .evaluation_dataset import SEARCH_EVALUATION_DATASET
 
 SearchFunction = Callable[[str], list[str]]
 
-BENCHMARK_K = 5
-
 
 @dataclass(frozen=True)
 class SearchBenchmarkResult:
@@ -31,6 +29,8 @@ class SearchBenchmarkResult:
       - precision_at_5: of what we SHOWED, how much was relevant
       - recall_at_5:    of everything relevant, how much we FOUND
       - mrr:            how close to the top the first relevant item lands
+    A grade-0 item (explicitly irrelevant) is never counted here:
+    only grade > 0 counts as relevant.
 
     NDCG@5 is the RANKING metric the trio cannot see: an engine that
     returns every relevant item in the WORST order still scores
@@ -45,25 +45,24 @@ class SearchBenchmarkResult:
 
 def run_search_benchmark(
     search: SearchFunction,
-    k: int = BENCHMARK_K,
 ) -> SearchBenchmarkResult:
     """
     Run the evaluation dataset through `search` and aggregate the
     four metrics (macro average: every query weighs equally, which
     suits a small dataset - no single query dominates).
 
-    The dataset is fully GRADED (slug -> relevance grade) since the
-    NDCG chapter: the binary metrics derive their relevance sets
-    from the grades (grade > 0 counts as relevant), and NDCG@K
-    consumes the raw grades. One dataset, one source of truth.
+    Retrieval -> graded relevance is done HERE, not by the metric
+    engine (section 5): the engine's raw sorted score list is
+    mapped to ground-truth relevance via the per-query relevance
+    map (missing slugs are 0), and the IDEAL is built from ALL
+    graded values sorted descending - including grade-0 items that
+    the engine MISSED entirely, so NDCG@5 penalizes losing relevant
+    items, not just misordering the ones found (section 4).
 
-    Queries with an EMPTY relevant set are coverage-matrix rows
-    (e.g. the deliberate no-result query): they declare no relevance
-    judgments, so they have nothing to measure - a ranking metric
-    against an empty judgment set would be either meaningless or an
-    unfair 0.0 tax on a correct empty result. Their behavior is
-    asserted behaviorally in test_search_query_coverage.py instead
-    of counted here.
+    The dataset is fully GRADED (slug -> relevance grade): the
+    binary metrics derive their relevance sets from the grades
+    (grade > 0 counts as relevant), and NDCG@5 consumes the raw
+    grades. One dataset, one source of truth.
 
     Deliberately no pass/fail thresholds here: thresholds belong to
     regression tests and only AFTER a real, validated baseline
@@ -78,13 +77,31 @@ def run_search_benchmark(
     recall_scores: list[float] = []
     ndcg_scores: list[float] = []
 
+    k = 5
+
     for case in SEARCH_EVALUATION_DATASET:
-        relevant = set(case.relevant_slugs)
+        relevance_map = case.relevance_map()
+
+        relevant = {
+            slug
+            for slug, score in relevance_map.items()
+            if score > 0
+        }
 
         if not relevant:
             continue
 
         retrieved = search(case.query)
+
+        retrieved_relevance = [
+            relevance_map.get(slug, 0)
+            for slug in retrieved
+        ]
+
+        ideal_relevance = sorted(
+            relevance_map.values(),
+            reverse=True,
+        )
 
         retrieved_results.append(retrieved)
         relevant_sets.append(relevant)
@@ -98,7 +115,11 @@ def run_search_benchmark(
         )
 
         ndcg_scores.append(
-            ndcg_at_k(retrieved, grades=case.grades, k=k)
+            ndcg_at_k(
+                retrieved_relevance,
+                ideal_relevance,
+                k=k,
+            )
         )
 
     precision_at_5 = (
